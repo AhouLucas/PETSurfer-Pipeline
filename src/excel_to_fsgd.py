@@ -3,9 +3,10 @@
 excel_to_fsgd.py — Convert an Excel spreadsheet to a FreeSurfer Group Descriptor (FSGD) file.
 
 Expected Excel format (single sheet):
-    Column 1  : PatientID  — integer identifier for the patient
-    Column 2  : Timestamp  — session label (e.g. "T0", "T1", "T2")
-    Columns 3+: variables — automatically classified:
+    Column 1  : Include    — 1 to include this row, 0 to skip it
+    Column 2  : PatientID  — integer identifier for the patient
+    Column 3  : Timestamp  — session label (e.g. "T0", "T1", "T2")
+    Columns 4+: variables — automatically classified:
                 • All-numeric columns → continuous Variables in the FSGD
                 • Columns with any non-numeric value → discrete factors,
                   combined into FSGD Class labels
@@ -16,9 +17,10 @@ using a template defined in constants.py:
     params['SUBJECTS_TEMPLATE'] % (patient_id, timestamp)
 
 Example:
-    PatientID | Timestamp | Diagnosis | Age | Sex | MMSE
-    1         | T0        | Normal    | 65  | F   | 29
-    2         | T0        | AD        | 72  | M   | 24
+    Include | PatientID | Timestamp | Diagnosis | Age | Sex | MMSE
+    1       | 1         | T0        | Normal    | 65  | F   | 29
+    0       | 2         | T0        | AD        | 72  | M   | 24  ← skipped
+    1       | 3         | T0        | AD        | 68  | F   | 22
 
 With SUBJECTS_TEMPLATE = "YASMINE_%d_%s", produces:
     GroupDescriptorFile 1
@@ -26,7 +28,7 @@ With SUBJECTS_TEMPLATE = "YASMINE_%d_%s", produces:
     Class AD
     Variables Age MMSE
     Input YASMINE_1_T0 Normal-F 65 29
-    Input YASMINE_2_T0 AD-M     72 24
+    Input YASMINE_3_T0 AD-F     68 22
 
 Usage:
     python excel_to_fsgd.py input.xlsx -o design.fsgd [--title TITLE]
@@ -52,9 +54,10 @@ from constants import params
 SUBJECTS_TEMPLATE = params['SUBJECTS_TEMPLATE']
 
 # Column indices (0-based)
-COL_PATIENT_ID = 0
-COL_TIMESTAMP = 1
-COL_VARIABLES_START = 2  # columns from this index onward are variables
+COL_INCLUDE = 0           # 1 = include row, 0 = skip row
+COL_PATIENT_ID = 1
+COL_TIMESTAMP = 2
+COL_VARIABLES_START = 3  # columns from this index onward are variables
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -116,7 +119,12 @@ def read_excel(path: str, sheet_name: str | None = None) -> tuple[list[str], lis
             continue
         # Pad or trim to match header length
         padded = list(row) + [None] * (len(headers) - len(row))
-        data_rows.append(padded[: len(headers)])
+        padded = padded[: len(headers)]
+        # Skip rows where the include flag (column 1) is 0
+        include_val = padded[COL_INCLUDE]
+        if include_val is not None and str(include_val).strip() == "0":
+            continue
+        data_rows.append(padded)
 
     return headers, data_rows
 
@@ -176,10 +184,10 @@ def validate(
     ok = True
 
     # --- Minimum column count ---
-    if len(headers) < 3:
+    if len(headers) < 4:
         logger.error(
-            "The spreadsheet must have at least 3 columns "
-            "(PatientID, Timestamp, and at least one variable)."
+            "The spreadsheet must have at least 4 columns "
+            "(Include, PatientID, Timestamp, and at least one variable)."
         )
         return False
 
@@ -396,9 +404,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Convert an Excel spreadsheet to a FreeSurfer FSGD file.",
         epilog=(
-            "Excel format: Column 1 = PatientID (integer), "
-            "Column 2 = Timestamp (e.g. T0, T1), "
-            "Columns 3+ = variables. All-numeric columns are treated as "
+            "Excel format: Column 1 = Include flag (1=include, 0=skip), "
+            "Column 2 = PatientID (integer), "
+            "Column 3 = Timestamp (e.g. T0, T1), "
+            "Columns 4+ = variables. All-numeric columns are treated as "
             "continuous variables; columns containing any text are treated "
             "as discrete factors and combined into class labels. "
             "The full subject ID is built from SUBJECTS_TEMPLATE in constants.py."
