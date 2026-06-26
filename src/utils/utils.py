@@ -1,60 +1,40 @@
 import os
 import pandas as pd
 
-def read_all_ids_from_excel(excel_path, id_column_name):
-    """
-    Reads all patient IDs from the specified Excel file.
 
-    Args:
-        excel_path (str): Path to the Excel file.
-        id_column_name (str): Name of the column containing patient IDs.
-    
-    Returns:
-        list: A list of patient IDs.
-    """
-
+def _load_excel(excel_path: str) -> pd.DataFrame:
     if not os.path.exists(excel_path):
-        raise FileNotFoundError(f"The specified Excel file does not exist: {excel_path}")
-
+        raise FileNotFoundError(f"Excel file not found: {excel_path}")
     try:
-        df = pd.read_excel(excel_path)
+        return pd.read_excel(excel_path, header=0)
     except Exception as e:
-        raise ValueError(f"Error reading the Excel file: {e}")
+        raise ValueError(f"Error reading Excel file: {e}")
 
-    if id_column_name not in df.columns:
-        raise ValueError(f"The specified ID column '{id_column_name}' does not exist in the Excel file.")
 
-    return df[id_column_name].dropna().unique().tolist()
-
-def read_timestamps_from_excel(excel_path, id_column_name, timestamp_column_name):
+def read_all_ids_from_excel(excel_path: str) -> list:
     """
-    Reads timestamps for each patient ID from the specified Excel file.
-
-    Args:
-        excel_path (str): Path to the Excel file.
-        id_column_name (str): Name of the column containing patient IDs.
-        timestamp_column_name (str): Name of the column containing timestamps.
-    
-    Returns:
-        dict: A dictionary mapping patient IDs to their corresponding timestamps.
+    Returns patient IDs (column index 1) for rows where the include flag
+    (column index 0) is 1.
     """
+    df = _load_excel(excel_path)
+    include_col = df.iloc[:, 0]
+    id_col = df.iloc[:, 1]
+    included = id_col[include_col == 1].dropna().unique().tolist()
+    return [int(pid) for pid in included]
 
-    if not os.path.exists(excel_path):
-        raise FileNotFoundError(f"The specified Excel file does not exist: {excel_path}")
 
-    try:
-        df = pd.read_excel(excel_path)
-    except Exception as e:
-        raise ValueError(f"Error reading the Excel file: {e}")
+def read_timestamps_from_excel(excel_path: str) -> dict:
+    """
+    Returns a dict mapping patient ID (column index 1) to timestamp
+    (column index 2) for rows where the include flag (column index 0) is 1.
+    """
+    df = _load_excel(excel_path)
+    include_col = df.iloc[:, 0]
+    id_col = df.iloc[:, 1]
+    ts_col = df.iloc[:, 2]
 
-    if id_column_name not in df.columns or timestamp_column_name not in df.columns:
-        raise ValueError(f"One or both specified columns '{id_column_name}' and '{timestamp_column_name}' do not exist in the Excel file.")
-
-    timestamps_dict = {}
-    for _, row in df.iterrows():
-        patient_id = row[id_column_name]
-        timestamp = row[timestamp_column_name]
-        if pd.notna(patient_id) and pd.notna(timestamp):
-            timestamps_dict[patient_id] = timestamp
-
-    return timestamps_dict
+    result = {}
+    for include, pid, ts in zip(include_col, id_col, ts_col):
+        if include == 1 and pd.notna(pid) and pd.notna(ts):
+            result[int(pid)] = ts
+    return result
