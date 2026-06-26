@@ -390,6 +390,8 @@ def generate_fsgd(
         lines.append(" ".join(parts))
 
     # --- DefaultVariable ---
+    if not default_var and continuous_cols:
+        default_var = headers[continuous_cols[0]]
     if default_var:
         lines.append(f"DefaultVariable {default_var}")
 
