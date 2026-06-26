@@ -1,0 +1,5 @@
+data/
+datatest/
+dataPET/
+.env/
+__pycache__/
