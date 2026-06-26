@@ -44,7 +44,7 @@ import logging
 import sys
 from pathlib import Path
 
-import openpyxl
+import pandas as pd
 
 from constants import params
 
@@ -93,38 +93,34 @@ def read_excel(path: str, sheet_name: str | None = None) -> tuple[list[str], lis
     Read the Excel file and return (headers, rows).
 
     Each row is a list of cell values with length == len(headers).
+    Rows where the include flag (column 1) is 0 are dropped.
     """
-    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        df = pd.read_excel(path, sheet_name=sheet_name or 0, header=0)
+    except ValueError as e:
+        logger.error("Sheet not found: %s", e)
+        sys.exit(1)
 
-    if sheet_name:
-        if sheet_name not in wb.sheetnames:
-            logger.error("Sheet '%s' not found. Available sheets: %s", sheet_name, wb.sheetnames)
-            sys.exit(1)
-        ws = wb[sheet_name]
-    else:
-        ws = wb.active
-
-    raw_rows = list(ws.iter_rows(values_only=True))
-    wb.close()
-
-    if len(raw_rows) < 2:
+    if df.empty:
         logger.error("The spreadsheet must have at least a header row and one data row.")
         sys.exit(1)
 
-    headers = [str(cell).strip() if cell is not None else "" for cell in raw_rows[0]]
-    data_rows = []
-    for i, row in enumerate(raw_rows[1:], start=2):
-        # Skip completely empty rows
-        if all(cell is None for cell in row):
-            continue
-        # Pad or trim to match header length
-        padded = list(row) + [None] * (len(headers) - len(row))
-        padded = padded[: len(headers)]
-        # Skip rows where the include flag (column 1) is 0
-        include_val = padded[COL_INCLUDE]
-        if include_val is not None and str(include_val).strip() == "0":
-            continue
-        data_rows.append(padded)
+    headers = [str(col).strip() for col in df.columns]
+
+    # Replace pandas NA with None for consistent downstream handling
+    df = df.where(df.notna(), other=None)
+
+    # Drop completely empty rows
+    df = df.dropna(how="all")
+
+    # Drop rows where the include flag (column 1) is 0
+    df = df[df.iloc[:, COL_INCLUDE].astype(str).str.strip() != "0"]
+
+    data_rows = df.values.tolist()
+
+    if not data_rows:
+        logger.error("The spreadsheet must have at least a header row and one data row.")
+        sys.exit(1)
 
     return headers, data_rows
 
