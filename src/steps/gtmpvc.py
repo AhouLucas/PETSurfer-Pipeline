@@ -39,7 +39,6 @@ def run_gtmpvc(config: PipelineConfig) -> None:
             '--auto-mask',     '1', '.01',
             '--no-tfe',
             '--rescale',       '8', '47',
-            '--mgx',           '.01',   # required to produce input.rescaled.nii.gz and mgx.ctxgm.nii.gz
             '--save-input',
             '--o',             output_path
         ], check=True)
