@@ -2,8 +2,8 @@ import os
 import re
 import pandas as pd
 
-DATA_DIR = "/path/to/data"
-OUTPUT_FILE = "/path/to/output.xlsx"
+DATA_DIR = "/media/vmalotaux/data/Yasmine"
+OUTPUT_FILE = "data/all_subject_ids.xlsx"
 
 VALID_TIMESTAMPS = {"T0", "T1", "T2"}
 DIR_PATTERN = re.compile(r"^TAU_(\d+)_(T\d+)$")
