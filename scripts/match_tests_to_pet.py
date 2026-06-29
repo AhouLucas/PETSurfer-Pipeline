@@ -1,30 +1,44 @@
 """
 Match closest test results to PET scan dates.
 
-For each patient in the checklist, finds the test result (from a separate
-Excel file) whose date is closest to the PET scan date. Outputs an Excel
-file with: patient ID, timestamp, test result, and test date.
+For each patient in the checklist, finds the test result whose date is closest
+to the PET scan date for each configured test group. Results from all groups
+are combined into a single wide-format row per patient. Test results more than
+1 year away from the PET scan date are excluded (left as NaN).
+
+Output columns follow the pipeline input spec:
+  col 0: include flag (always 1)
+  col 1: patient ID
+  col 2: timestamp
+  col 3+: all result columns from all test groups
 """
 
 import pandas as pd
-import numpy as np
 from pathlib import Path
 
 # ─────────────────────────── CONFIGURATION ────────────────────────────
 
 # Input files
-TESTS_FILE = "data/braak_cognition.xlsx"  # Excel file containing test results
-CHECKLIST_FILE = "data/check_liste_FS_T0.xlsx"  # Excel file containing patient IDs and PET scan dates
+TESTS_FILE = "data/braak_cognition.xlsx"        # Excel file with test results
+CHECKLIST_FILE = "data/check_liste_FS_T0.xlsx"  # Excel file with patient IDs and PET scan dates
+TESTS_SKIPROWS = 1  # Number of header rows to skip in the tests file (0 = none)
 
-# Column names in the tests file
+# Column name for patient ID in both files
 TESTS_ID_COL = "tau_id"
-TESTS_RESULT_COL = "pet_tau_braak"
-TESTS_DATE_COL = "pet_tau_date"
-
-# Column names in the checklist file
 CHECKLIST_ID_COL = "ID"
 CHECKLIST_PET_DATE_COL = "date_PET"
-CHECKLIST_INCLUDE_COL = "select_PET"  # Set to a column name (str) to filter rows, or None to include all
+CHECKLIST_INCLUDE_COL = "select_PET"  # Column to filter rows by (must equal 1); set to None to include all
+
+# Test groups: list of (date_column, [result_columns]) tuples.
+# Each group shares a single date column. The row closest to the PET scan date
+# is selected for each group independently.
+TEST_GROUPS = [
+    ("pet_tau_date", ["pet_tau_braak"]),
+    # ("cog_date",     ["mmse", "moca"]),  # example second group
+]
+
+# Maximum allowed time difference between test date and PET scan date.
+MAX_DAYS = 365
 
 # Output
 OUTPUT_FILE = "data/matched_results.xlsx"
@@ -32,70 +46,72 @@ TIMESTAMP_LABEL = "T0"
 
 # ──────────────────────────── PROCESSING ──────────────────────────────
 
+def find_best_match(patient_df, date_col, result_cols, pet_date, max_days):
+    """Return a dict of {result_col: value} for the closest valid row, or NaNs."""
+    subset = patient_df[
+        patient_df[date_col].notna()
+        & patient_df[result_cols].notna().any(axis=1)
+    ].copy()
+
+    if subset.empty:
+        return {col: float("nan") for col in result_cols}
+
+    diffs = (subset[date_col] - pet_date).abs()
+    min_diff = diffs.min()
+
+    if min_diff.days > max_days:
+        return {col: float("nan") for col in result_cols}
+
+    candidates = subset[diffs == min_diff]
+    best = candidates.sort_values(date_col).iloc[0]
+    return {col: best[col] for col in result_cols}
+
+
 def main():
-    tests_df = pd.read_excel(TESTS_FILE, parse_dates=[TESTS_DATE_COL], skiprows=1)  # Skip first row if it contains metadata
-    checklist_df = pd.read_excel(CHECKLIST_FILE, parse_dates=[CHECKLIST_PET_DATE_COL])
+    all_date_cols = list({date_col for date_col, _ in TEST_GROUPS})
+    tests_df = pd.read_excel(TESTS_FILE, skiprows=TESTS_SKIPROWS)
+    checklist_df = pd.read_excel(CHECKLIST_FILE)
 
-    tests_df[TESTS_DATE_COL] = pd.to_datetime(tests_df[TESTS_DATE_COL], dayfirst=True, format='mixed')
-    checklist_df[CHECKLIST_PET_DATE_COL] = pd.to_datetime(checklist_df[CHECKLIST_PET_DATE_COL], dayfirst=True, format='mixed')
+    for col in all_date_cols:
+        tests_df[col] = pd.to_datetime(tests_df[col], dayfirst=True, format="mixed")
+    checklist_df[CHECKLIST_PET_DATE_COL] = pd.to_datetime(
+        checklist_df[CHECKLIST_PET_DATE_COL], dayfirst=True, format="mixed"
+    )
 
-    # Filter checklist if an include column is specified
     if CHECKLIST_INCLUDE_COL is not None:
         checklist_df = checklist_df[checklist_df[CHECKLIST_INCLUDE_COL] == 1]
 
-    results = []
-    skipped_no_test = 0
-    skipped_not_in_tests = 0
+    all_result_cols = [col for _, result_cols in TEST_GROUPS for col in result_cols]
 
+    rows = []
     for _, row in checklist_df.iterrows():
         pid = row[CHECKLIST_ID_COL]
         pet_date = row[CHECKLIST_PET_DATE_COL]
 
-        # Get all tests for this patient that actually have a result
-        patient_tests = tests_df[
-            (tests_df[TESTS_ID_COL] == pid)
-            & tests_df[TESTS_RESULT_COL].notna()
-            & tests_df[TESTS_DATE_COL].notna()
-        ]
+        patient_df = tests_df[tests_df[TESTS_ID_COL] == pid]
 
-        if patient_tests.empty:
-            if pid in tests_df[TESTS_ID_COL].values:
-                skipped_no_test += 1
-            else:
-                skipped_not_in_tests += 1
-            continue
-
-        # Compute absolute time difference; on tie, earliest wins
-        diffs = (patient_tests[TESTS_DATE_COL] - pet_date).abs()
-        # Among rows with the minimum difference, pick the earliest date
-        min_diff = diffs.min()
-        candidates = patient_tests[diffs == min_diff]
-        best = candidates.sort_values(TESTS_DATE_COL).iloc[0]
-
-        results.append({
-            TESTS_ID_COL: pid,
+        out_row = {
+            "select": 1,
+            CHECKLIST_ID_COL: pid,
             "Timestamp": TIMESTAMP_LABEL,
-            TESTS_RESULT_COL: best[TESTS_RESULT_COL],
-            # TESTS_DATE_COL: best[TESTS_DATE_COL], # Add date if you want to see the test date in the output excel file    
-            # CHECKLIST_PET_DATE_COL: pet_date,
-        })
+        }
 
-    out_df = pd.DataFrame(results)
-    for col in [TESTS_DATE_COL, CHECKLIST_PET_DATE_COL]:
-        if col in out_df.columns:
-            out_df[col] = out_df[col].dt.strftime("%d/%m/%Y")
+        for date_col, result_cols in TEST_GROUPS:
+            matches = find_best_match(patient_df, date_col, result_cols, pet_date, MAX_DAYS)
+            out_row.update(matches)
+
+        rows.append(out_row)
+
+    out_df = pd.DataFrame(rows, columns=["select", CHECKLIST_ID_COL, "Timestamp"] + all_result_cols)
     out_df.to_excel(OUTPUT_FILE, index=False)
 
-    # Summary
-    total = len(checklist_df)
-    matched = len(results)
-    print(f"Done — {matched}/{total} patients matched.")
-    if skipped_not_in_tests:
-        print(f"  {skipped_not_in_tests} patient(s) not found in tests file.")
-    if skipped_no_test:
-        print(f"  {skipped_no_test} patient(s) found but had no valid test result.")
+    total = len(rows)
+    fully_matched = sum(
+        all(row[col] == row[col] for col in all_result_cols)  # NaN != NaN
+        for row in rows
+    )
+    print(f"Done — {fully_matched}/{total} patients with all results matched.")
     print(f"Output written to: {OUTPUT_FILE}")
- 
 
 
 if __name__ == "__main__":
