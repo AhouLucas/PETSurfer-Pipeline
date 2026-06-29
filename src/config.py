@@ -7,7 +7,7 @@ import argparse
 import os
 from dataclasses import dataclass, field
 
-from utils.utils import read_all_ids_from_excel, read_timestamps_from_excel
+from utils.utils import read_patients_from_excel
 
 
 @dataclass
@@ -22,22 +22,23 @@ class PipelineConfig:
     fsgd_path: str | None
     contrast_matrix_path: str | None  # .mtx file passed to mri_glmfit --C
 
-    # Populated by build_config from the Excel file
-    ids: list = field(default_factory=list)
-    timestamps: dict = field(default_factory=dict)
+    # Populated by build_config from the Excel file.
+    # Each entry is (patient_id, timestamp); a patient with repeat scans
+    # appears once per scan so both are processed independently.
+    patients: list = field(default_factory=list)
 
-    def subject_path(self, patient_id: int) -> str:
+    def subject_path(self, patient_id: int, timestamp: str) -> str:
         """Absolute path to a patient's FreeSurfer subject directory."""
         return os.path.join(
             self.subjects_dir,
-            self.subjects_template % (patient_id, self.timestamps[patient_id])
+            self.subjects_template % (patient_id, timestamp)
         )
 
-    def data_path(self, patient_id: int) -> str:
+    def data_path(self, patient_id: int, timestamp: str) -> str:
         """Absolute path to a patient's raw PET data directory."""
         return os.path.join(
             self.data_dir,
-            self.data_template % (patient_id, self.timestamps[patient_id])
+            self.data_template % (patient_id, timestamp)
         )
 
 
@@ -86,14 +87,12 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
     Construct a PipelineConfig from parsed CLI args.
     Reads patient IDs and timestamps from the Excel file.
     """
-    ids = read_all_ids_from_excel(args.excel_path)
-    timestamps = read_timestamps_from_excel(args.excel_path)
+    patients = read_patients_from_excel(args.excel_path)
 
-    missing = [pid for pid in ids if pid not in timestamps]
-    if missing:
+    if not patients:
         raise ValueError(
-            f"Missing timestamp(s) for patient ID(s): {missing}. "
-            "Check column 3 of your Excel file."
+            "No included patients found in the Excel file. "
+            "Check that column 0 (include flag) has at least one row set to 1."
         )
 
     return PipelineConfig(
@@ -106,6 +105,5 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         fwhm=args.fwhm,
         subjects_template=args.subjects_template,
         data_template=args.data_template,
-        ids=ids,
-        timestamps=timestamps,
+        patients=patients,
     )

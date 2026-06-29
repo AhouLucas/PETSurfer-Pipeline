@@ -11,30 +11,23 @@ def _load_excel(excel_path: str) -> pd.DataFrame:
         raise ValueError(f"Error reading Excel file: {e}")
 
 
-def read_all_ids_from_excel(excel_path: str) -> list:
+def read_patients_from_excel(excel_path: str) -> list[tuple[int, str]]:
     """
-    Returns patient IDs (column index 1) for rows where the include flag
-    (column index 0) is 1.
-    """
-    df = _load_excel(excel_path)
-    include_col = df.iloc[:, 0]
-    id_col = df.iloc[:, 1]
-    included = id_col[include_col == 1].dropna().unique().tolist()
-    return [int(pid) for pid in included]
-
-
-def read_timestamps_from_excel(excel_path: str) -> dict:
-    """
-    Returns a dict mapping patient ID (column index 1) to timestamp
-    (column index 2) for rows where the include flag (column index 0) is 1.
+    Returns a list of (patient_id, timestamp) tuples for rows where the
+    include flag (column index 0) is 1. A patient with multiple timestamps
+    (repeat scans) appears once per row.
     """
     df = _load_excel(excel_path)
     include_col = df.iloc[:, 0]
     id_col = df.iloc[:, 1]
     ts_col = df.iloc[:, 2]
 
-    result = {}
+    result = []
+    seen = set()
     for include, pid, ts in zip(include_col, id_col, ts_col):
         if include == 1 and pd.notna(pid) and pd.notna(ts):
-            result[int(pid)] = ts
+            entry = (int(pid), ts)
+            if entry not in seen:
+                seen.add(entry)
+                result.append(entry)
     return result

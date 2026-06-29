@@ -23,9 +23,9 @@ def run_surface_analysis(config: PipelineConfig) -> None:
     all_fsaverage: dict[str, list[str]] = {'lh': [], 'rh': []}
 
     # Run mri_vol2surf for each patient and hemisphere
-    for patient_id in config.ids:
-        subject_dir = config.subject_path(patient_id)
-        data_dir = config.data_path(patient_id)
+    for patient_id, timestamp in config.patients:
+        subject_dir = config.subject_path(patient_id, timestamp)
+        data_dir = config.data_path(patient_id, timestamp)
 
         # Use the rescaled image generated from mri_gtmpvc as input for mri_vol2surf
         pet_path = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output/input.rescaled.nii.gz')

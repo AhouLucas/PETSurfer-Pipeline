@@ -21,9 +21,9 @@ from config import PipelineConfig, add_common_args, build_config
 
 
 def run_gtmpvc(config: PipelineConfig) -> None:
-    for patient_id in config.ids:
-        subject_dir = config.subject_path(patient_id)
-        data_dir = config.data_path(patient_id)
+    for patient_id, timestamp in config.patients:
+        subject_dir = config.subject_path(patient_id, timestamp)
+        data_dir = config.data_path(patient_id, timestamp)
 
         pet_path = os.path.join(data_dir, 'PET.nii')
         registration_file_path = os.path.join(subject_dir, 'mri/template.reg.tau.lta')
