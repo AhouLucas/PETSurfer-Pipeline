@@ -12,9 +12,9 @@ Expected Excel format (single sheet):
                   combined into FSGD Class labels
 
 The full FreeSurfer subject ID is built from the PatientID and Timestamp
-using a template defined in constants.py:
+using the --subjects-template flag:
 
-    params['SUBJECTS_TEMPLATE'] % (patient_id, timestamp)
+    subjects_template % (patient_id, timestamp)
 
 Example:
     Include | PatientID | Timestamp | Diagnosis | Age | Sex | MMSE
@@ -22,7 +22,7 @@ Example:
     0       | 2         | T0        | AD        | 72  | M   | 24  ← skipped
     1       | 3         | T0        | AD        | 68  | F   | 22
 
-With SUBJECTS_TEMPLATE = "YASMINE_%d_%s", produces:
+With --subjects-template "YASMINE_%d_%s", produces:
     GroupDescriptorFile 1
     Class Normal
     Class AD
@@ -46,12 +46,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from constants import params
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SUBJECTS_TEMPLATE = params['SUBJECTS_TEMPLATE']
 
 # Column indices (0-based)
 COL_INCLUDE = 0           # 1 = include row, 0 = skip row
@@ -83,9 +80,9 @@ def is_numeric(value) -> bool:
         return False
 
 
-def build_subject_id(patient_id: int, timestamp: str) -> str:
+def build_subject_id(patient_id: int, timestamp: str, subjects_template: str) -> str:
     """Build the full FreeSurfer subject ID from the template."""
-    return SUBJECTS_TEMPLATE % (patient_id, timestamp)
+    return subjects_template % (patient_id, timestamp)
 
 
 def read_excel(path: str, sheet_name: str | None = None) -> tuple[list[str], list[list]]:
@@ -172,6 +169,7 @@ def validate(
     discrete_cols: list[int],
     continuous_cols: list[int],
     default_var: str | None,
+    subjects_template: str,
 ) -> bool:
     """
     Run validation checks.  Returns True if everything is fine, False (with
@@ -234,7 +232,7 @@ def validate(
         if pid is None or ts is None:
             continue
         try:
-            full_id = build_subject_id(int(pid), str(ts).strip())
+            full_id = build_subject_id(int(pid), str(ts).strip(), subjects_template)
         except (TypeError, ValueError) as e:
             logger.error("Row %d: cannot build subject ID: %s", row_idx, e)
             ok = False
@@ -242,7 +240,7 @@ def validate(
         if " " in full_id or "\t" in full_id:
             logger.error(
                 "Row %d: generated SubjectID '%s' contains whitespace "
-                "(check SUBJECTS_TEMPLATE in constants.py).",
+                "(check --subjects-template).",
                 row_idx, full_id,
             )
             ok = False
@@ -319,6 +317,7 @@ def generate_fsgd(
     title: str | None,
     default_var: str | None,
     mean_center: bool,
+    subjects_template: str,
 ) -> str:
     """Build the FSGD file content as a string."""
 
@@ -370,7 +369,7 @@ def generate_fsgd(
     for row, cls_label in zip(data_rows, class_labels):
         patient_id = int(row[COL_PATIENT_ID])
         timestamp = str(row[COL_TIMESTAMP]).strip()
-        subject_id = build_subject_id(patient_id, timestamp)
+        subject_id = build_subject_id(patient_id, timestamp, subjects_template)
 
         parts = [f"Input {subject_id} {cls_label}"]
         for col_idx in continuous_cols:
@@ -408,7 +407,7 @@ def parse_args() -> argparse.Namespace:
             "Columns 4+ = variables. All-numeric columns are treated as "
             "continuous variables; columns containing any text are treated "
             "as discrete factors and combined into class labels. "
-            "The full subject ID is built from SUBJECTS_TEMPLATE in constants.py."
+            "The full subject ID is built using --subjects-template."
         ),
     )
     parser.add_argument("input", help="Path to the input Excel file (.xlsx)")
@@ -424,6 +423,14 @@ def parse_args() -> argparse.Namespace:
         "--mean-center",
         action="store_true",
         help="Mean-center all continuous variables before writing the FSGD",
+    )
+    parser.add_argument(
+        "--subjects-template", default="YASMINE_TAU_%d_%s",
+        help=(
+            "printf-style template for FreeSurfer subject directory names. "
+            "Must contain %%d (patient ID) then %%s (timestamp). "
+            "Default: YASMINE_TAU_%%d_%%s"
+        ),
     )
     parser.add_argument(
         "--sheet", help="Name of the Excel sheet to read (default: active sheet)"
@@ -447,7 +454,8 @@ def main() -> None:
         logger.error("Input file not found: %s", input_path)
         sys.exit(1)
 
-    logger.info("Using SUBJECTS_TEMPLATE: '%s'", SUBJECTS_TEMPLATE)
+    subjects_template = args.subjects_template
+    logger.info("Using subjects template: '%s'", subjects_template)
 
     # --- Read ---
     headers, data_rows = read_excel(str(input_path), sheet_name=args.sheet)
@@ -470,7 +478,7 @@ def main() -> None:
         logger.warning("No continuous variables detected (columns 3+).")
 
     # --- Validate ---
-    if not validate(headers, data_rows, discrete_cols, continuous_cols, args.default_var):
+    if not validate(headers, data_rows, discrete_cols, continuous_cols, args.default_var, subjects_template):
         logger.error("Validation failed. Fix the errors above and retry.")
         sys.exit(1)
 
@@ -483,6 +491,7 @@ def main() -> None:
         title=args.title,
         default_var=args.default_var,
         mean_center=args.mean_center,
+        subjects_template=subjects_template,
     )
 
     # --- Write ---
@@ -495,7 +504,7 @@ def main() -> None:
     unique_classes = list(dict.fromkeys(class_labels))
 
     print(f"\nSummary:")
-    print(f"  Template   : {SUBJECTS_TEMPLATE}")
+    print(f"  Template   : {subjects_template}")
     print(f"  Subjects   : {len(data_rows)}")
     print(f"  Classes    : {len(unique_classes)} — {unique_classes}")
     print(f"  Variables  : {len(continuous_cols)} — {[headers[i] for i in continuous_cols]}")
