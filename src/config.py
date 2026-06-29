@@ -20,6 +20,7 @@ class PipelineConfig:
     subjects_template: str
     data_template: str
     fsgd_path: str | None
+    contrast_matrix_path: str | None  # .mtx file passed to mri_glmfit --C
 
     # Populated by build_config from the Excel file
     ids: list = field(default_factory=list)
@@ -56,7 +57,11 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         '--fsgd-path', default=None,
-        help='Path to the output FSGD file (optional).'
+        help='Path to the FSGD file used by mri_glmfit (optional).'
+    )
+    parser.add_argument(
+        '--contrast-matrix-path', default=None,
+        help='Path to the contrast matrix (.mtx) passed to mri_glmfit --C (optional).'
     )
     parser.add_argument(
         '--projfrac', type=float, default=0.5,
@@ -96,6 +101,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         data_dir=args.data_dir,
         excel_path=args.excel_path,
         fsgd_path=args.fsgd_path,
+        contrast_matrix_path=args.contrast_matrix_path,
         projfrac=args.projfrac,
         fwhm=args.fwhm,
         subjects_template=args.subjects_template,
