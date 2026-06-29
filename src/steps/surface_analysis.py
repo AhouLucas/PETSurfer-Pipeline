@@ -83,7 +83,7 @@ def run_surface_analysis(config: PipelineConfig) -> None:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Run surface-based analysis (mri_vol2surf + concat + smooth) for all included patients.'
+        description='Run surface-based analysis (mri_vol2surf + concat + smooth + glmfit) for all included patients.'
     )
     add_common_args(parser)
     args = parser.parse_args()
