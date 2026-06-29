@@ -252,12 +252,14 @@ def validate(
         ok = False
 
     # --- No empty cells in discrete columns ---
+    missing_rows: set[int] = set()
     for col_idx in discrete_cols:
         col_name = headers[col_idx]
         for row_idx, row in enumerate(data_rows, start=2):
             if row[col_idx] is None or str(row[col_idx]).strip() == "":
                 logger.error("Row %d, column '%s': empty cell.", row_idx, col_name)
                 ok = False
+                missing_rows.add(row_idx)
 
     # --- No empty cells in continuous columns ---
     for col_idx in continuous_cols:
@@ -270,12 +272,23 @@ def validate(
                     row_idx, col_name,
                 )
                 ok = False
+                missing_rows.add(row_idx)
             elif not is_numeric(val):
                 logger.error(
                     "Row %d, column '%s': non-numeric value '%s' in continuous column.",
                     row_idx, col_name, val,
                 )
                 ok = False
+                missing_rows.add(row_idx)
+
+    if missing_rows:
+        sorted_rows = sorted(missing_rows)
+        logger.error(
+            "Rows with missing or invalid variable data: %s. "
+            "For each row, either fill in the missing values or set the include "
+            "flag (column 1) to 0 to exclude that patient from the analysis.",
+            sorted_rows,
+        )
 
     # --- DefaultVariable must be among continuous variables ---
     if default_var:
