@@ -77,7 +77,7 @@ def run_surface_analysis(config: PipelineConfig) -> None:
             '--C',      config.contrast_matrix_path,
             '--surf',   'fsaverage', hemi,
             '--cortex',
-            '--o',      os.path.join(config.data_dir, f'all.{hemi}.pet.fsaverage.sm{config.fwhm:02d}.glmfit')
+            '--o',      os.path.join(config.subjects_dir, f'all.{hemi}.pet.fsaverage.sm{config.fwhm:02d}.glmfit')
         ], check=True)
 
 
