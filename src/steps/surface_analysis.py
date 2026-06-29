@@ -22,12 +22,14 @@ def run_surface_analysis(config: PipelineConfig) -> None:
     # Collect per-hemisphere output paths across all subjects
     all_fsaverage: dict[str, list[str]] = {'lh': [], 'rh': []}
 
+    # Run mri_vol2surf for each patient and hemisphere
     for patient_id in config.ids:
         subject_dir = config.subject_path(patient_id)
         data_dir = config.data_path(patient_id)
 
-        pet_path = os.path.join(data_dir, 'PET.nii')
-        reg_path = os.path.join(subject_dir, 'mri/template.reg.tau.lta')
+        # Use the rescaled image generated from mri_gtmpvc as input for mri_vol2surf
+        pet_path = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output/input.rescaled.nii.gz')
+        reg_path = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output/aux/bbpet2anat.lta')
 
         for hemi in ('lh', 'rh'):
             output_path = os.path.join(subject_dir, 'mri', f'{hemi}.pet.fsaverage.sm00.nii.gz')
@@ -45,6 +47,7 @@ def run_surface_analysis(config: PipelineConfig) -> None:
 
             all_fsaverage[hemi].append(output_path)
 
+    # Concatenate, smooth and perform glmfit across all subjects for each hemisphere
     for hemi in ('lh', 'rh'):
         concat_path = os.path.join(config.data_dir, f'all.{hemi}.pet.fsaverage.sm00.nii.gz')
         subprocess.run(
@@ -65,6 +68,16 @@ def run_surface_analysis(config: PipelineConfig) -> None:
             '--cortex',
             '--s',      'fsaverage',
             '--hemi',   hemi
+        ], check=True)
+
+        subprocess.run([
+            'mri_glmfit',
+            '--y',      smoothed_path,
+            '--fsgd',   config.fsgd_path,
+            '--C',      config.contrast_matrix_path,
+            '--surf',   'fsaverage', hemi,
+            '--cortex',
+            '--o',      os.path.join(config.data_dir, f'all.{hemi}.pet.fsaverage.sm{config.fwhm:02d}.glmfit')
         ], check=True)
 
 
