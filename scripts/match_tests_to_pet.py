@@ -34,14 +34,20 @@ CHECKLIST_INCLUDE_COL = "select_PET"  # Column to filter rows by (must equal 1);
 # is selected for each group independently.
 TEST_GROUPS = [
     ("pet_tau_date", ["pet_tau_braak"]),
-    # ("cog_date",     ["mmse", "moca"]),  # example second group
+    ("date_cognitive_assessment",     ["mmse", 
+                                       "memory_composite", 
+                                       "language_composite", 
+                                       "executive_composite", 
+                                       "visuospatial_composite", 
+                                       "global_cognitive_composite", 
+                                       "pacc"]),
 ]
 
 # Maximum allowed time difference between test date and PET scan date.
 MAX_DAYS = 365
 
 # Output
-OUTPUT_FILE = "data/matched_results.xlsx"
+OUTPUT_FILE = "data/all_matched_results.xlsx"
 TIMESTAMP_LABEL = "T0"
 
 # ──────────────────────────── PROCESSING ──────────────────────────────
