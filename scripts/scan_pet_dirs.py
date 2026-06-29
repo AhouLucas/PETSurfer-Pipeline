@@ -1,6 +1,6 @@
 import os
 import re
-import openpyxl
+import pandas as pd
 
 DATA_DIR = "/path/to/data"
 OUTPUT_FILE = "/path/to/output.xlsx"
@@ -22,10 +22,6 @@ for entry in os.scandir(DATA_DIR):
         continue
     rows.append((int(patient_id), timestamp))
 
-wb = openpyxl.Workbook()
-ws = wb.active
-ws.append(["ID", "Timestamp"])
-for row in rows:
-    ws.append(row)
-wb.save(OUTPUT_FILE)
+df = pd.DataFrame(rows, columns=["ID", "Timestamp"])
+df.to_excel(OUTPUT_FILE, index=False)
 print(f"Written {len(rows)} rows to {OUTPUT_FILE}")
