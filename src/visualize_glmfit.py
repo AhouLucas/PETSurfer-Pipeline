@@ -7,7 +7,8 @@ on the fsaverage inflated surface.
 Usage:
     python src/visualize_glmfit.py --glmfit-dir path/to/glmfit-output/all.lh.pet.fsaverage.sm05.glmfit
 
-The script auto-detects the single contrast subfolder inside --glmfit-dir.
+The script auto-detects the contrast subfolder when only one exists.
+Use --contrast to specify which one when multiple exist.
 """
 
 import argparse
@@ -16,8 +17,18 @@ import subprocess
 import sys
 
 
-def find_contrast_dir(glmfit_dir: str) -> str:
-    """Return the single contrast subdirectory inside glmfit_dir, or error."""
+def find_contrast_dir(glmfit_dir: str, contrast: str | None) -> str:
+    """Return the contrast subdirectory inside glmfit_dir."""
+    if contrast is not None:
+        path = os.path.join(glmfit_dir, contrast)
+        if not os.path.isdir(path):
+            print(f'ERROR: contrast directory not found: {path}', file=sys.stderr)
+            sys.exit(1)
+        if not os.path.exists(os.path.join(path, 'sig.mgh')):
+            print(f'ERROR: sig.mgh not found in {path}', file=sys.stderr)
+            sys.exit(1)
+        return path
+
     try:
         entries = [
             e for e in os.scandir(glmfit_dir)
@@ -34,10 +45,10 @@ def find_contrast_dir(glmfit_dir: str) -> str:
         )
         sys.exit(1)
     if len(entries) > 1:
-        names = ', '.join(e.name for e in entries)
+        names = '\n  '.join(sorted(e.name for e in entries))
         print(
-            f'ERROR: multiple contrast subfolders found ({names}). '
-            'Specify which one to use with --contrast.',
+            f'ERROR: multiple contrast subfolders found in {glmfit_dir}:\n  {names}\n'
+            'Use --contrast <name> to select one.',
             file=sys.stderr
         )
         sys.exit(1)
@@ -54,6 +65,10 @@ def main() -> None:
         help='Path to the mri_glmfit output directory (contains the contrast subfolder).'
     )
     parser.add_argument(
+        '--contrast', default=None,
+        help='Name of the contrast subfolder to visualize. Auto-detected when only one exists.'
+    )
+    parser.add_argument(
         '--subjects-dir', default='/media/vmalotaux/data/subjects-v.7.2.0',
         help='Directory containing the fsaverage subject folder. Default: ./data'
     )
@@ -67,7 +82,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    contrast_dir = find_contrast_dir(args.glmfit_dir)
+    contrast_dir = find_contrast_dir(args.glmfit_dir, args.contrast)
     sig_path = os.path.join(contrast_dir, 'sig.mgh')
 
     surf_path = os.path.join(args.subjects_dir, 'fsaverage', 'surf', f'{args.hemi}.inflated')
