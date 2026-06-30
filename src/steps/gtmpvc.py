@@ -30,6 +30,8 @@ def run_gtmpvc(config: PipelineConfig) -> None:
         gtmseg_path = os.path.join(subject_dir, 'mri/gtmseg.mgz')
         output_path = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
 
+        # TODO: Add check to see if folder already present -> Skip if that's the case
+
         subprocess.run([
             'mri_gtmpvc',
             '--i',             pet_path,

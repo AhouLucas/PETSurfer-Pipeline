@@ -70,15 +70,19 @@ def run_surface_analysis(config: PipelineConfig) -> None:
             '--hemi',   hemi
         ], check=True)
 
-        subprocess.run([
-            'mri_glmfit',
-            '--y',      smoothed_path,
-            '--fsgd',   config.fsgd_path,
-            '--C',      config.contrast_matrix_path,
-            '--surf',   'fsaverage', hemi,
-            '--cortex',
-            '--o',      os.path.join(config.subjects_dir, f'all.{hemi}.pet.fsaverage.sm{config.fwhm:02d}.glmfit')
-        ], check=True)
+
+        # Comment glmfit out for now while to first generate all the preparation files
+        # TODO: Add a check to see if the necessary generated folders are already present to speed up the process
+
+        # subprocess.run([
+        #     'mri_glmfit',
+        #     '--y',      smoothed_path,
+        #     '--fsgd',   config.fsgd_path,
+        #     '--C',      config.contrast_matrix_path,
+        #     '--surf',   'fsaverage', hemi,
+        #     '--cortex',
+        #     '--o',      os.path.join(config.subjects_dir, f'all.{hemi}.pet.fsaverage.sm{config.fwhm:02d}.glmfit')
+        # ], check=True)
 
 
 if __name__ == '__main__':
