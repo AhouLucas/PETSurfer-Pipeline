@@ -9,6 +9,7 @@ concatenates all subjects into a single volume, then smooths on the surface.
 """
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
@@ -16,24 +17,49 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from config import PipelineConfig, add_common_args, build_config
+from steps.gtmpvc import GTMPVC_OUTPUT_FILES
 
 
-def run_surface_analysis(config: PipelineConfig) -> None:
+def run_surface_analysis(config: PipelineConfig, logger: logging.Logger | None = None) -> None:
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
     # Collect per-hemisphere output paths across all subjects
     all_fsaverage: dict[str, list[str]] = {'lh': [], 'rh': []}
 
     # Run mri_vol2surf for each patient and hemisphere
     for patient_id, timestamp in config.patients:
+        label = f'patient {patient_id} / {timestamp}'
         subject_dir = config.subject_path(patient_id, timestamp)
-        data_dir = config.data_path(patient_id, timestamp)
 
-        # Use the rescaled image generated from mri_gtmpvc as input for mri_vol2surf
-        pet_path = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output/input.rescaled.nii.gz')
-        reg_path = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output/aux/bbpet2anat.lta')
+        gtmpvc_dir = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
+        pet_path = os.path.join(gtmpvc_dir, 'input.rescaled.nii.gz')
+        reg_path = os.path.join(gtmpvc_dir, 'aux/bbpet2anat.lta')
 
+        # Verify gtmpvc outputs are present before projecting to surface.
+        missing_inputs = [
+            os.path.join(gtmpvc_dir, f)
+            for f in GTMPVC_OUTPUT_FILES
+            if not os.path.exists(os.path.join(gtmpvc_dir, f))
+        ]
+        if missing_inputs:
+            logger.warning(
+                '[FAILED] vol2surf — %s — missing gtmpvc output(s): %s',
+                label, ', '.join(missing_inputs)
+            )
+            continue
+
+        patient_done = True
         for hemi in ('lh', 'rh'):
             output_path = os.path.join(subject_dir, 'mri', f'{hemi}.pet.fsaverage.sm00.nii.gz')
 
+            if os.path.exists(output_path):
+                logger.info('[SKIPPED] vol2surf %s — %s — output already present', hemi, label)
+                all_fsaverage[hemi].append(output_path)
+                continue
+
+            patient_done = False
+            logger.info('[RUNNING] vol2surf %s — %s', hemi, label)
             subprocess.run([
                 'mri_vol2surf',
                 '--mov',        pet_path,
@@ -49,6 +75,10 @@ def run_surface_analysis(config: PipelineConfig) -> None:
 
     # Concatenate, smooth and perform glmfit across all subjects for each hemisphere
     for hemi in ('lh', 'rh'):
+        if not all_fsaverage[hemi]:
+            logger.warning('[SKIPPED] concat+smooth %s — no subjects with vol2surf output', hemi)
+            continue
+
         concat_path = os.path.join(config.data_dir, f'all.{hemi}.pet.fsaverage.sm00.nii.gz')
         subprocess.run(
             ['mri_concat'] + all_fsaverage[hemi] + ['--o', concat_path, '--prune'],
@@ -72,7 +102,6 @@ def run_surface_analysis(config: PipelineConfig) -> None:
 
 
         # Comment glmfit out for now while to first generate all the preparation files
-        # TODO: Add a check to see if the necessary generated folders are already present to speed up the process
 
         # subprocess.run([
         #     'mri_glmfit',
@@ -86,6 +115,11 @@ def run_surface_analysis(config: PipelineConfig) -> None:
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s  %(levelname)-8s  %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+    )
     parser = argparse.ArgumentParser(
         description='Run surface-based analysis (mri_vol2surf + concat + smooth + glmfit) for all included patients.'
     )
