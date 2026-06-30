@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""
+run_analysis.py — Group-level analysis pipeline (concat → smooth → GLM).
+
+Assumes per-patient preprocessing is complete:
+  • Coregistration (mri_coreg) → template.reg.lta
+  • Partial volume correction (mri_gtmpvc) → gtmpvc output folder
+  • Surface projection (mri_vol2surf) → {lh,rh}.pet.fsaverage.sm00.nii.gz
+
+This script picks up from those outputs and runs:
+  1. mri_concat  — concatenate all subjects per hemisphere
+  2. mris_fwhm   — smooth the concatenated surface map
+  3. mri_glmfit  — GLM on the smoothed map (requires FSGD + contrast matrix)
+
+The FSGD file can be provided via --fsgd-path; if omitted, it is auto-generated
+from the input Excel file using the same column conventions as excel_to_fsgd.py.
+
+Usage:
+    python src/run_analysis.py \\
+        --excel-path patients.xlsx \\
+        --contrast-matrix-path contrasts.mtx \\
+        [--output-dir ./analysis_out] \\
+        [--subjects-dir ./data] \\
+        [--fwhm 10] \\
+        [--fsgd-path existing.fsgd] \\
+        [--title "MyStudy"] \\
+        [--default-var Age] \\
+        [--mean-center] \\
+        [--design dods|doss] \\
+        [--subjects-template YASMINE_TAU_%d_%s]
+"""
+
+import argparse
+import logging
+import os
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# Allow imports from src/
+sys.path.insert(0, os.path.dirname(__file__))
+
+from excel_to_fsgd import (
+    build_class_label,
+    classify_columns,
+    generate_fsgd,
+    read_excel,
+    validate,
+)
+from utils.utils import read_patients_from_excel
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+HEMISPHERES = ('lh', 'rh')
+
+# Vol2surf output expected inside each subject's mri/ directory
+VOL2SURF_FILENAME = '{hemi}.pet.fsaverage.sm00.nii.gz'
+
+
+# ---------------------------------------------------------------------------
+# Preprocessing validation
+# ---------------------------------------------------------------------------
+
+def check_vol2surf_outputs(
+    patients: list[tuple[int, str]],
+    subjects_dir: str,
+    subjects_template: str,
+    logger: logging.Logger,
+) -> bool:
+    """
+    Verify that mri_vol2surf outputs exist for every patient and hemisphere.
+    Logs all missing files at once and returns False if any are absent.
+    Call this before running concat so failures are caught early.
+    """
+    missing: list[str] = []
+
+    for patient_id, timestamp in patients:
+        subject_name = subjects_template % (patient_id, timestamp)
+        mri_dir = os.path.join(subjects_dir, subject_name, 'mri')
+        for hemi in HEMISPHERES:
+            path = os.path.join(mri_dir, VOL2SURF_FILENAME.format(hemi=hemi))
+            if not os.path.exists(path):
+                missing.append(path)
+
+    if missing:
+        logger.error(
+            'Missing vol2surf output(s) — %d file(s) not found:\n  %s\n\n'
+            'These files are produced by the preprocessing step (mri_vol2surf).\n'
+            'Run the preprocessing pipeline first to generate these outputs before '
+            'running run_analysis.py.',
+            len(missing),
+            '\n  '.join(missing),
+        )
+        return False
+
+    return True
+
+
+# ---------------------------------------------------------------------------
+# FSGD generation
+# ---------------------------------------------------------------------------
+
+def resolve_fsgd(args: argparse.Namespace, output_dir: str, logger: logging.Logger) -> str:
+    """
+    Return the path to the FSGD file to use for GLM.
+    If --fsgd-path is given, validate it exists and return it.
+    Otherwise, auto-generate from the Excel file and write to output_dir/analysis.fsgd.
+    """
+    if args.fsgd_path:
+        if not os.path.exists(args.fsgd_path):
+            logger.error('FSGD file not found: %s', args.fsgd_path)
+            sys.exit(1)
+        logger.info('[FSGD] Using provided file: %s', args.fsgd_path)
+        return args.fsgd_path
+
+    # Auto-generate
+    if not args.title:
+        logger.error(
+            '--title is required when auto-generating the FSGD file. '
+            'Provide --title or supply an existing FSGD via --fsgd-path.'
+        )
+        sys.exit(1)
+
+    logger.info('[FSGD] Auto-generating from Excel: %s', args.excel_path)
+    headers, data_rows = read_excel(args.excel_path)
+    discrete_cols, continuous_cols = classify_columns(headers, data_rows)
+
+    if not validate(
+        headers, data_rows, discrete_cols, continuous_cols,
+        args.default_var, args.subjects_template,
+    ):
+        logger.error('FSGD validation failed. Fix the errors above and retry.')
+        sys.exit(1)
+
+    fsgd_content = generate_fsgd(
+        headers=headers,
+        data_rows=data_rows,
+        discrete_cols=discrete_cols,
+        continuous_cols=continuous_cols,
+        title=args.title,
+        default_var=args.default_var,
+        mean_center=args.mean_center,
+        subjects_template=args.subjects_template,
+    )
+
+    fsgd_path = os.path.join(output_dir, 'analysis.fsgd')
+    Path(fsgd_path).write_text(fsgd_content)
+    logger.info('[FSGD] Written to: %s', fsgd_path)
+    return fsgd_path
+
+
+# ---------------------------------------------------------------------------
+# Main analysis steps
+# ---------------------------------------------------------------------------
+
+def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
+    subjects_dir = args.subjects_dir
+    output_dir = args.output_dir
+    fwhm = args.fwhm
+    subjects_template = args.subjects_template
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- Read patient list ---
+    patients = read_patients_from_excel(args.excel_path)
+    if not patients:
+        logger.error('No patients found in %s. Check the include flag (column 1).', args.excel_path)
+        sys.exit(1)
+    logger.info('Loaded %d patient scan(s) from %s', len(patients), args.excel_path)
+
+    # --- Validate preprocessing outputs (fail fast, list everything at once) ---
+    if not check_vol2surf_outputs(patients, subjects_dir, subjects_template, logger):
+        sys.exit(1)
+
+    # --- Collect per-hemisphere vol2surf paths ---
+    vol2surf_paths: dict[str, list[str]] = {hemi: [] for hemi in HEMISPHERES}
+    for patient_id, timestamp in patients:
+        subject_name = subjects_template % (patient_id, timestamp)
+        mri_dir = os.path.join(subjects_dir, subject_name, 'mri')
+        for hemi in HEMISPHERES:
+            vol2surf_paths[hemi].append(
+                os.path.join(mri_dir, VOL2SURF_FILENAME.format(hemi=hemi))
+            )
+
+    # --- FSGD ---
+    fsgd_path = resolve_fsgd(args, output_dir, logger)
+
+    # --- Per-hemisphere: concat → smooth → GLM ---
+    for hemi in HEMISPHERES:
+        # Concat
+        concat_path = os.path.join(output_dir, f'all.{hemi}.pet.fsaverage.sm00.nii.gz')
+        if os.path.exists(concat_path):
+            logger.info('[SKIPPED] concat %s — output already present: %s', hemi, concat_path)
+        else:
+            logger.info('[RUNNING] concat %s — %d subjects', hemi, len(patients))
+            subprocess.run(
+                ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
+                check=True,
+            )
+            logger.info('[DONE] concat %s → %s', hemi, concat_path)
+
+        # Smooth
+        smoothed_path = os.path.join(
+            output_dir, f'all.{hemi}.pet.fsaverage.sm{fwhm:02d}.nii.gz'
+        )
+        if os.path.exists(smoothed_path):
+            logger.info('[SKIPPED] smooth %s — output already present: %s', hemi, smoothed_path)
+        else:
+            logger.info('[RUNNING] smooth %s (fwhm=%d)', hemi, fwhm)
+            subprocess.run([
+                'mris_fwhm',
+                '--smooth-only',
+                '--i',     concat_path,
+                '--fwhm',  str(fwhm),
+                '--o',     smoothed_path,
+                '--cortex',
+                '--s',     'fsaverage',
+                '--hemi',  hemi,
+            ], check=True)
+            logger.info('[DONE] smooth %s → %s', hemi, smoothed_path)
+
+        # GLM
+        glmfit_dir = os.path.join(
+            output_dir, f'all.{hemi}.pet.fsaverage.sm{fwhm:02d}.glmfit'
+        )
+        if os.path.exists(glmfit_dir):
+            logger.info('[SKIPPED] glmfit %s — output directory already present: %s', hemi, glmfit_dir)
+        else:
+            logger.info('[RUNNING] glmfit %s', hemi)
+            subprocess.run([
+                'mri_glmfit',
+                '--y',      smoothed_path,
+                '--fsgd',   fsgd_path, args.design,
+                '--C',      args.contrast_matrix_path,
+                '--surf',   'fsaverage', hemi,
+                '--cortex',
+                '--o',      glmfit_dir,
+            ], check=True)
+            logger.info('[DONE] glmfit %s → %s', hemi, glmfit_dir)
+
+    logger.info('Analysis complete. All outputs written to: %s', output_dir)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            'Run group-level PET surface analysis: concat → smooth → GLM.\n\n'
+            'Assumes per-patient preprocessing is complete (coregistration, '
+            'gtmpvc, vol2surf). See CLAUDE.md § Pipeline Steps for the full '
+            'preprocessing workflow.'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # --- Required ---
+    parser.add_argument(
+        '--excel-path', required=True,
+        help='Path to the patient list Excel file (.xlsx).',
+    )
+    parser.add_argument(
+        '--contrast-matrix-path', required=True,
+        help='Path to the GLM contrast matrix file (.mtx).',
+    )
+
+    # --- Directories ---
+    parser.add_argument(
+        '--subjects-dir', default='/media/vmaloteaux/data/subjects-v7.2.0',
+        help='Root directory containing FreeSurfer subject folders. Default: /media/vmaloteaux/data/subjects-v7.2.0',
+    )
+    parser.add_argument(
+        '--output-dir', default=None,
+        help=(
+            'Directory for analysis outputs (concat, smooth, GLM, FSGD, log). '
+            'Default: same as --subjects-dir.'
+        ),
+    )
+
+    # --- Analysis parameters ---
+    parser.add_argument(
+        '--fwhm', type=int, default=5,
+        help='Surface smoothing kernel FWHM in mm. Default: 5',
+    )
+    parser.add_argument(
+        '--subjects-template', default='YASMINE_TAU_%d_%s',
+        help=(
+            'printf-style template for subject directory names. '
+            'Must contain %%d (patient ID) then %%s (timestamp). '
+            'Default: YASMINE_TAU_%%d_%%s'
+        ),
+    )
+
+    # --- FSGD ---
+    fsgd_group = parser.add_argument_group(
+        'FSGD',
+        'Provide --fsgd-path to use an existing FSGD file, or omit it to '
+        'auto-generate one from the Excel file (requires --title).',
+    )
+    fsgd_group.add_argument(
+        '--fsgd-path', default=None,
+        help='Path to an existing FSGD file. If given, FSGD generation is skipped.',
+    )
+    fsgd_group.add_argument(
+        '--title', default=None,
+        help='Title for the auto-generated FSGD file (required when not using --fsgd-path).',
+    )
+    fsgd_group.add_argument(
+        '--default-var', default=None,
+        help='Default continuous variable for FSGD display.',
+    )
+    fsgd_group.add_argument(
+        '--mean-center', action='store_true',
+        help='Mean-center continuous variables in the auto-generated FSGD.',
+    )
+    fsgd_group.add_argument(
+        '--design', default='dods', choices=['dods', 'doss'],
+        help=(
+            'GLM design type passed to mri_glmfit via --fsgd: '
+            'dods = Different Offset Different Slope, '
+            'doss = Different Offset Same Slope. Default: dods'
+        ),
+    )
+
+    return parser.parse_args()
+
+
+def setup_logger(output_dir: str) -> logging.Logger:
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_path = os.path.join(output_dir, f'analysis_{timestamp}.log')
+
+    logger = logging.getLogger('run_analysis')
+    logger.setLevel(logging.INFO)
+
+    fmt = logging.Formatter('%(asctime)s  %(levelname)-8s  %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+    file_handler = logging.FileHandler(log_path, mode='w')
+    file_handler.setFormatter(fmt)
+    logger.addHandler(file_handler)
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(fmt)
+    logger.addHandler(stream_handler)
+
+    logger.info('Log file: %s', log_path)
+    return logger
+
+
+if __name__ == '__main__':
+    args = parse_args()
+
+    # Resolve output_dir default after parsing (needs subjects_dir)
+    if args.output_dir is None:
+        args.output_dir = args.subjects_dir
+
+    logger = setup_logger(args.output_dir)
+    run_analysis(args, logger)
