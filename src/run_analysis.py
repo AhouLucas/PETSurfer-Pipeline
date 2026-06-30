@@ -271,8 +271,8 @@ def parse_args() -> argparse.Namespace:
 
     # --- Directories ---
     parser.add_argument(
-        '--subjects-dir', default='/media/vmaloteaux/data/subjects-v7.2.0',
-        help='Root directory containing FreeSurfer subject folders. Default: /media/vmaloteaux/data/subjects-v7.2.0',
+        '--subjects-dir', default='/media/vmalotaux/data/subjects-v.7.2.0',
+        help='Root directory containing FreeSurfer subject folders. Default: /media/vmalotaux/data/subjects-v.7.2.0',
     )
     parser.add_argument(
         '--output-dir', default=None,
