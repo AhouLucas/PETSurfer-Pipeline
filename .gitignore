@@ -4,3 +4,4 @@ dataPET/
 .env/
 __pycache__/
 CLAUDE.md
+analysis/
