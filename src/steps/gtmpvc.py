@@ -29,37 +29,38 @@ GTMPVC_OUTPUT_FILES = [
 ]
 
 
-def run_gtmpvc(config: PipelineConfig, logger: logging.Logger | None = None) -> None:
-    if logger is None:
-        logger = logging.getLogger(__name__)
+def _run_gtmpvc_patient(
+    config: PipelineConfig,
+    patient_id: int,
+    timestamp: str,
+    logger: logging.Logger,
+) -> bool:
+    """Run gtmpvc for a single patient. Returns True on success, False on any failure."""
+    label = f'patient {patient_id} / {timestamp}'
+    subject_dir = config.subject_path(patient_id, timestamp)
+    data_dir = config.data_path(patient_id, timestamp)
 
-    for patient_id, timestamp in config.patients:
-        label = f'patient {patient_id} / {timestamp}'
-        subject_dir = config.subject_path(patient_id, timestamp)
-        data_dir = config.data_path(patient_id, timestamp)
+    output_dir = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
 
-        output_dir = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
+    output_files = [os.path.join(output_dir, f) for f in GTMPVC_OUTPUT_FILES]
+    if all(os.path.exists(p) for p in output_files):
+        logger.info('[SKIPPED] gtmpvc — %s — output already present at %s', label, output_dir)
+        return True
 
-        # Skip if output is already complete.
-        output_files = [os.path.join(output_dir, f) for f in GTMPVC_OUTPUT_FILES]
-        if all(os.path.exists(p) for p in output_files):
-            logger.info('[SKIPPED] gtmpvc — %s — output already present at %s', label, output_dir)
-            continue
+    pet_path = os.path.join(data_dir, 'PET.nii')
+    reg_path = os.path.join(subject_dir, 'mri/template.reg.tau.lta')
+    gtmseg_path = os.path.join(subject_dir, 'mri/gtmseg.mgz')
 
-        # Verify required inputs before launching the command.
-        pet_path = os.path.join(data_dir, 'PET.nii')
-        reg_path = os.path.join(subject_dir, 'mri/template.reg.tau.lta')
-        gtmseg_path = os.path.join(subject_dir, 'mri/gtmseg.mgz')
+    missing = [p for p in (pet_path, reg_path, gtmseg_path) if not os.path.exists(p)]
+    if missing:
+        logger.warning(
+            '[FAILED] gtmpvc — %s — missing input file(s): %s',
+            label, ', '.join(missing)
+        )
+        return False
 
-        missing = [p for p in (pet_path, reg_path, gtmseg_path) if not os.path.exists(p)]
-        if missing:
-            logger.warning(
-                '[FAILED] gtmpvc — %s — missing input file(s): %s',
-                label, ', '.join(missing)
-            )
-            continue
-
-        logger.info('[RUNNING] gtmpvc — %s', label)
+    logger.info('[RUNNING] gtmpvc — %s', label)
+    try:
         subprocess.run([
             'mri_gtmpvc',
             '--i',             pet_path,
@@ -72,6 +73,19 @@ def run_gtmpvc(config: PipelineConfig, logger: logging.Logger | None = None) -> 
             '--save-input',
             '--o',             output_dir
         ], check=True)
+    except subprocess.CalledProcessError as e:
+        logger.warning('[FAILED] gtmpvc — %s — command returned exit code %d', label, e.returncode)
+        return False
+
+    return True
+
+
+def run_gtmpvc(config: PipelineConfig, logger: logging.Logger | None = None) -> None:
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    for patient_id, timestamp in config.patients:
+        _run_gtmpvc_patient(config, patient_id, timestamp, logger)
 
 
 if __name__ == '__main__':
