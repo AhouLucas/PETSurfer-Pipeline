@@ -25,6 +25,7 @@ TESTS_SKIPROWS = 1  # Number of header rows to skip in the tests file (0 = none)
 
 # Column name for patient ID in both files
 TESTS_ID_COL = "tau_id"
+TESTS_DOB_COL = "dob"  # Date of birth column in the tests file; age at PET scan is computed from this; set to None to omit
 CHECKLIST_ID_COL = "ID"
 CHECKLIST_PET_DATE_COL = "date_PET"
 CHECKLIST_INCLUDE_COL = "select_PET"  # Column to filter rows by (must equal 1); set to None to include all
@@ -80,6 +81,8 @@ def main():
 
     for col in all_date_cols:
         tests_df[col] = pd.to_datetime(tests_df[col], dayfirst=True, format="mixed")
+    if TESTS_DOB_COL is not None:
+        tests_df[TESTS_DOB_COL] = pd.to_datetime(tests_df[TESTS_DOB_COL], dayfirst=True, format="mixed")
     checklist_df[CHECKLIST_PET_DATE_COL] = pd.to_datetime(
         checklist_df[CHECKLIST_PET_DATE_COL], dayfirst=True, format="mixed"
     )
@@ -102,13 +105,23 @@ def main():
             "Timestamp": TIMESTAMP_LABEL,
         }
 
+        if TESTS_DOB_COL is not None:
+            dob_values = patient_df[TESTS_DOB_COL].dropna()
+            if not dob_values.empty:
+                dob = dob_values.iloc[0]
+                # Age in fractional years at the time of the PET scan
+                out_row["age"] = (pet_date - dob).days / 365.25
+            else:
+                out_row["age"] = float("nan")
+
         for date_col, result_cols in TEST_GROUPS:
             matches = find_best_match(patient_df, date_col, result_cols, pet_date, MAX_DAYS)
             out_row.update(matches)
 
         rows.append(out_row)
 
-    out_df = pd.DataFrame(rows, columns=["select", CHECKLIST_ID_COL, "Timestamp"] + all_result_cols)
+    age_cols = ["age"] if TESTS_DOB_COL is not None else []
+    out_df = pd.DataFrame(rows, columns=["select", CHECKLIST_ID_COL, "Timestamp"] + age_cols + all_result_cols)
     out_df.to_excel(OUTPUT_FILE, index=False)
 
     total = len(rows)
