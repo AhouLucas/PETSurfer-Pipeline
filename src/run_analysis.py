@@ -15,10 +15,22 @@ This script picks up from those outputs and runs:
 The FSGD file can be provided via --fsgd-path; if omitted, it is auto-generated
 from the input Excel file using the same column conventions as excel_to_fsgd.py.
 
-Usage:
-    python src/run_analysis.py \\
-        --excel-path patients.xlsx \\
-        --contrast-matrix-path contrasts.mtx \\
+--- Directory-based usage (recommended) ---
+
+    python src/run_analysis.py braak-stage/
+
+The script auto-discovers inputs inside the directory:
+  • Exactly one *.xlsx  → patient list (--excel-path)
+  • One or more *.mtx   → contrast matrices (--contrast-matrix-path)
+  • At most one *.fsgd  → existing FSGD file (--fsgd-path); if absent, one is generated
+
+All outputs (concat, smooth, GLM, FSGD, log) are written into the same directory.
+
+--- Explicit flags (override auto-discovery) ---
+
+    python src/run_analysis.py braak-stage/ \\
+        [--excel-path patients.xlsx] \\
+        [--contrast-matrix-path c1.mtx c2.mtx] \\
         [--output-dir ./analysis_out] \\
         [--subjects-dir ./data] \\
         [--fwhm 10] \\
@@ -58,6 +70,72 @@ HEMISPHERES = ('lh', 'rh')
 
 # Vol2surf output expected inside each subject's mri/ directory
 VOL2SURF_FILENAME = '{hemi}.pet.fsaverage.sm00.nii.gz'
+
+
+# ---------------------------------------------------------------------------
+# Input auto-discovery
+# ---------------------------------------------------------------------------
+
+def resolve_inputs(args: argparse.Namespace, logger: logging.Logger) -> None:
+    """
+    Auto-discover inputs from args.analysis_dir when explicit flags are absent.
+    Fills in args.excel_path, args.contrast_matrix_path, and args.fsgd_path in-place.
+    Exits with a clear error if required files are missing or ambiguous.
+    """
+    if not args.analysis_dir:
+        # No directory given — explicit flags must supply everything; validated later.
+        return
+
+    d = args.analysis_dir
+
+    if not os.path.isdir(d):
+        logger.error('Analysis directory not found: %s', d)
+        sys.exit(1)
+
+    # --- Excel ---
+    if not args.excel_path:
+        xlsx_files = sorted(Path(d).glob('*.xlsx'))
+        if len(xlsx_files) == 0:
+            logger.error(
+                'No .xlsx file found in %s. Add your patient list spreadsheet '
+                'or pass --excel-path explicitly.', d
+            )
+            sys.exit(1)
+        if len(xlsx_files) > 1:
+            logger.error(
+                'Multiple .xlsx files found in %s:\n  %s\n'
+                'Use --excel-path to specify which one to use.',
+                d, '\n  '.join(str(f) for f in xlsx_files)
+            )
+            sys.exit(1)
+        args.excel_path = str(xlsx_files[0])
+        logger.info('[DISCOVERY] Excel: %s', args.excel_path)
+
+    # --- Contrast matrices ---
+    if not args.contrast_matrix_path:
+        mtx_files = sorted(Path(d).glob('*.mtx'))
+        if len(mtx_files) == 0:
+            logger.error(
+                'No .mtx contrast matrix file(s) found in %s. Add at least one '
+                'or pass --contrast-matrix-path explicitly.', d
+            )
+            sys.exit(1)
+        args.contrast_matrix_path = [str(f) for f in mtx_files]
+        logger.info('[DISCOVERY] Contrast matrices: %s', ', '.join(args.contrast_matrix_path))
+
+    # --- FSGD (optional) ---
+    if not args.fsgd_path:
+        fsgd_files = sorted(Path(d).glob('*.fsgd'))
+        if len(fsgd_files) > 1:
+            logger.error(
+                'Multiple .fsgd files found in %s:\n  %s\n'
+                'Use --fsgd-path to specify which one to use.',
+                d, '\n  '.join(str(f) for f in fsgd_files)
+            )
+            sys.exit(1)
+        if len(fsgd_files) == 1:
+            args.fsgd_path = str(fsgd_files[0])
+            logger.info('[DISCOVERY] FSGD: %s', args.fsgd_path)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +242,16 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # --- Auto-discover inputs from analysis directory ---
+    resolve_inputs(args, logger)
+
+    if not args.excel_path:
+        logger.error('--excel-path is required (or pass an analysis directory containing a .xlsx file).')
+        sys.exit(1)
+    if not args.contrast_matrix_path:
+        logger.error('--contrast-matrix-path is required (or pass an analysis directory containing .mtx files).')
+        sys.exit(1)
+
     # --- Read patient list ---
     patients = read_patients_from_excel(args.excel_path)
     if not patients:
@@ -230,11 +318,14 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
             logger.info('[SKIPPED] glmfit %s — output directory already present: %s', hemi, glmfit_dir)
         else:
             logger.info('[RUNNING] glmfit %s', hemi)
+            contrast_flags = []
+            for c in args.contrast_matrix_path:
+                contrast_flags += ['--C', c]
             subprocess.run([
                 'mri_glmfit',
                 '--y',      smoothed_path,
                 '--fsgd',   fsgd_path, args.design,
-                '--C',      args.contrast_matrix_path,
+                *contrast_flags,
                 '--surf',   'fsaverage', hemi,
                 '--cortex',
                 '--o',      glmfit_dir,
@@ -259,14 +350,24 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # --- Required ---
+    # --- Analysis directory (recommended entry point) ---
     parser.add_argument(
-        '--excel-path', required=True,
-        help='Path to the patient list Excel file (.xlsx).',
+        'analysis_dir', nargs='?', default=None,
+        help=(
+            'Directory containing analysis inputs: one *.xlsx, one or more *.mtx, '
+            'and optionally one *.fsgd. All outputs are written here. '
+            'Explicit flags below override anything found in this directory.'
+        ),
+    )
+
+    # --- Inputs (optional when analysis_dir is given) ---
+    parser.add_argument(
+        '--excel-path', default=None,
+        help='Path to the patient list Excel file (.xlsx). Auto-discovered from analysis_dir if omitted.',
     )
     parser.add_argument(
-        '--contrast-matrix-path', required=True,
-        help='Path to the GLM contrast matrix file (.mtx).',
+        '--contrast-matrix-path', nargs='+', default=None,
+        help='Path(s) to GLM contrast matrix file(s) (.mtx). Auto-discovered from analysis_dir if omitted.',
     )
 
     # --- Directories ---
@@ -355,9 +456,9 @@ def setup_logger(output_dir: str) -> logging.Logger:
 if __name__ == '__main__':
     args = parse_args()
 
-    # Resolve output_dir default after parsing (needs subjects_dir)
+    # Prefer analysis_dir as output location; fall back to subjects_dir
     if args.output_dir is None:
-        args.output_dir = args.subjects_dir
+        args.output_dir = args.analysis_dir if args.analysis_dir else args.subjects_dir
 
     logger = setup_logger(args.output_dir)
     run_analysis(args, logger)
