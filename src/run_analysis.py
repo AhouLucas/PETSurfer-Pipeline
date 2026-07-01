@@ -265,10 +265,14 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
             logger.info('[SKIPPED] concat %s — output already present: %s', hemi, concat_path)
         else:
             logger.info('[RUNNING] concat %s — %d subjects', hemi, len(patients))
-            subprocess.run(
-                ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
-                check=True,
-            )
+            try:
+                subprocess.run(
+                    ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
+                    check=True,
+                )
+            except subprocess.CalledProcessError as e:
+                logger.error('mri_concat failed for %s (exit code %d).', hemi, e.returncode)
+                sys.exit(1)
             logger.info('[DONE] concat %s → %s', hemi, concat_path)
 
         # Smooth
@@ -279,16 +283,20 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
             logger.info('[SKIPPED] smooth %s — output already present: %s', hemi, smoothed_path)
         else:
             logger.info('[RUNNING] smooth %s (fwhm=%d)', hemi, fwhm)
-            subprocess.run([
-                'mris_fwhm',
-                '--smooth-only',
-                '--i',     concat_path,
-                '--fwhm',  str(fwhm),
-                '--o',     smoothed_path,
-                '--cortex',
-                '--s',     'fsaverage',
-                '--hemi',  hemi,
-            ], check=True)
+            try:
+                subprocess.run([
+                    'mris_fwhm',
+                    '--smooth-only',
+                    '--i',     concat_path,
+                    '--fwhm',  str(fwhm),
+                    '--o',     smoothed_path,
+                    '--cortex',
+                    '--s',     'fsaverage',
+                    '--hemi',  hemi,
+                ], check=True)
+            except subprocess.CalledProcessError as e:
+                logger.error('mris_fwhm failed for %s (exit code %d).', hemi, e.returncode)
+                sys.exit(1)
             logger.info('[DONE] smooth %s → %s', hemi, smoothed_path)
 
         # GLM
@@ -302,15 +310,19 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
             contrast_flags = []
             for c in args.contrast_matrix_path:
                 contrast_flags += ['--C', c]
-            subprocess.run([
-                'mri_glmfit',
-                '--y',      smoothed_path,
-                '--fsgd',   fsgd_path, args.design,
-                *contrast_flags,
-                '--surf',   'fsaverage', hemi,
-                '--cortex',
-                '--o',      glmfit_dir,
-            ], check=True)
+            try:
+                subprocess.run([
+                    'mri_glmfit',
+                    '--y',      smoothed_path,
+                    '--fsgd',   fsgd_path, args.design,
+                    *contrast_flags,
+                    '--surf',   'fsaverage', hemi,
+                    '--cortex',
+                    '--o',      glmfit_dir,
+                ], check=True)
+            except subprocess.CalledProcessError as e:
+                logger.error('mri_glmfit failed for %s (exit code %d).', hemi, e.returncode)
+                sys.exit(1)
             logger.info('[DONE] glmfit %s → %s', hemi, glmfit_dir)
 
     logger.info('Analysis complete. All outputs written to: %s', output_dir)
@@ -430,4 +442,8 @@ def setup_logger(output_dir: str) -> logging.Logger:
 if __name__ == '__main__':
     args = parse_args()
     logger = setup_logger(args.analysis_dir)
-    run_analysis(args, logger)
+    try:
+        run_analysis(args, logger)
+    except Exception as e:
+        logger.exception('Unexpected error: %s', e)
+        sys.exit(1)
