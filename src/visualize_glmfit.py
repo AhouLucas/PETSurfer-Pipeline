@@ -7,12 +7,9 @@ on the fsaverage inflated surface.
 Usage:
     python src/visualize_glmfit.py braak-stage/
 
-The script finds the glmfit directory for the chosen hemisphere inside the analysis
-directory, then loads all contrast sig.mgh files as stacked overlay layers in
-freeview (toggle visibility in the Layers panel).
-
+Both hemispheres are loaded by default. Use --hemi to restrict to one.
+All contrasts are loaded as stacked overlay layers (toggle in the Layers panel).
 Use --contrast to load a single contrast instead of all of them.
-Use --glmfit-dir to point directly at a glmfit directory instead of an analysis dir.
 """
 
 import argparse
@@ -20,6 +17,8 @@ import glob
 import os
 import subprocess
 import sys
+
+HEMISPHERES = ('lh', 'rh')
 
 
 def find_glmfit_dir(analysis_dir: str, hemi: str) -> str:
@@ -81,22 +80,48 @@ def find_contrast_dirs(glmfit_dir: str, contrast: str | None) -> list[str]:
     return entries
 
 
+def build_f_args(
+    surf_path: str,
+    contrast_dirs: list[str],
+    overlay_threshold: str,
+    hemi: str,
+) -> list[str]:
+    """
+    Build the list of -f arguments for one hemisphere.
+    Each contrast gets its own entry with a hemi-prefixed name so layers from
+    lh and rh are distinguishable in the freeview Layers panel.
+    Only the first contrast of the first hemisphere loaded will be visible by default.
+    """
+    f_args = []
+    for i, d in enumerate(contrast_dirs):
+        name = f'{hemi}.{os.path.basename(d)}'
+        sig = os.path.join(d, 'sig.mgh')
+        visible = '' if i == 0 else ':visible=0'
+        spec = (
+            f'{surf_path}'
+            ':annot=aparc.annot'
+            ':annot_outline=1'
+            f':overlay={sig}'
+            f':overlay_threshold={overlay_threshold}'
+            f':name={name}'
+            f'{visible}'
+        )
+        f_args += ['-f', spec]
+    return f_args
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             'Visualize mri_glmfit sig.mgh results on the fsaverage inflated surface.\n\n'
-            'Pass an analysis directory and all contrasts are loaded as stacked overlay\n'
-            'layers in freeview — toggle visibility in the Layers panel.'
+            'Both hemispheres are loaded by default. All contrasts are loaded as stacked\n'
+            'overlay layers in freeview — toggle visibility in the Layers panel.'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        'analysis_dir', nargs='?', default=None,
+        'analysis_dir',
         help='Analysis directory produced by run_analysis.py. The glmfit directory is auto-detected.',
-    )
-    parser.add_argument(
-        '--glmfit-dir', default=None,
-        help='Path to a specific mri_glmfit output directory. Overrides analysis_dir.',
     )
     parser.add_argument(
         '--contrast', default=None,
@@ -107,8 +132,8 @@ def main() -> None:
         help='Directory containing the fsaverage subject folder. Default: /media/vmalotaux/data/subjects-v.7.2.0',
     )
     parser.add_argument(
-        '--hemi', choices=['lh', 'rh'], default='lh',
-        help='Hemisphere to display. Default: lh',
+        '--hemi', choices=['lh', 'rh'], default=None,
+        help='Hemisphere to display. Loads both hemispheres if omitted.',
     )
     parser.add_argument(
         '--overlay-threshold', default='2,5', metavar='MIN,MAX',
@@ -116,47 +141,24 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.glmfit_dir is None and args.analysis_dir is None:
-        parser.error('Provide an analysis directory or use --glmfit-dir.')
-
-    # Resolve glmfit directory
-    if args.glmfit_dir:
-        glmfit_dir = args.glmfit_dir
-    else:
-        if not os.path.isdir(args.analysis_dir):
-            print(f'ERROR: analysis directory not found: {args.analysis_dir}', file=sys.stderr)
-            sys.exit(1)
-        glmfit_dir = find_glmfit_dir(args.analysis_dir, args.hemi)
-
-    contrast_dirs = find_contrast_dirs(glmfit_dir, args.contrast)
-
-    surf_path = os.path.join(args.subjects_dir, 'fsaverage', 'surf', f'{args.hemi}.inflated')
-    if not os.path.exists(surf_path):
-        print(f'ERROR: surface file not found: {surf_path}', file=sys.stderr)
+    if not os.path.isdir(args.analysis_dir):
+        print(f'ERROR: analysis directory not found: {args.analysis_dir}', file=sys.stderr)
         sys.exit(1)
 
-    # One -f entry per contrast so each gets its own name in the Layers panel.
-    # Only the first is visible by default; toggle the others in freeview.
-    f_args = []
-    for i, d in enumerate(contrast_dirs):
-        name = os.path.basename(d)
-        sig = os.path.join(d, 'sig.mgh')
-        visible = '' if i == 0 else ':visible=0'
-        spec = (
-            f'{surf_path}'
-            ':annot=aparc.annot'
-            ':annot_outline=1'
-            f':overlay={sig}'
-            f':overlay_threshold={args.overlay_threshold}'
-            f':name={name}'
-            f'{visible}'
-        )
-        f_args += ['-f', spec]
+    hemis = [args.hemi] if args.hemi else list(HEMISPHERES)
 
-    if len(contrast_dirs) > 1:
-        names = ', '.join(os.path.basename(d) for d in contrast_dirs)
-        print(f'Loading {len(contrast_dirs)} contrasts: {names}')
-        print('Toggle overlay visibility in the freeview Layers panel.')
+    f_args = []
+    for hemi in hemis:
+        glmfit_dir = find_glmfit_dir(args.analysis_dir, hemi)
+
+        contrast_dirs = find_contrast_dirs(glmfit_dir, args.contrast)
+
+        surf_path = os.path.join(args.subjects_dir, 'fsaverage', 'surf', f'{hemi}.inflated')
+        if not os.path.exists(surf_path):
+            print(f'ERROR: surface file not found: {surf_path}', file=sys.stderr)
+            sys.exit(1)
+
+        f_args += build_f_args(surf_path, contrast_dirs, args.overlay_threshold, hemi)
 
     cmd = ['freeview'] + f_args + ['-viewport', '3d']
     print('Running:', ' '.join(cmd))
