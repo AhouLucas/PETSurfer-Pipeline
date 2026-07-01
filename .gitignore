@@ -5,3 +5,4 @@ dataPET/
 __pycache__/
 CLAUDE.md
 analysis/
+*.log
