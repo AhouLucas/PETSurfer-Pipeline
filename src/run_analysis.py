@@ -253,7 +253,7 @@ def parse_args() -> argparse.Namespace:
         description=(
             'Run group-level PET surface analysis: concat → smooth → GLM.\n\n'
             'Assumes per-patient preprocessing is complete (coregistration, '
-            'gtmpvc, vol2surf). See CLAUDE.md § Pipeline Steps for the full '
+            'gtmpvc, vol2surf). See README.md § Pipeline Steps for the full '
             'preprocessing workflow.'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
