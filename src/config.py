@@ -21,6 +21,7 @@ class PipelineConfig:
     data_template: str
     fsgd_path: str | None
     contrast_matrix_path: str | None  # .mtx file passed to mri_glmfit --C
+    force: bool = False
 
     # Populated by build_config from the Excel file.
     # Each entry is (patient_id, timestamp); a patient with repeat scans
@@ -80,6 +81,10 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         '--data-template', default='TAU_%d_%s',
         help='printf-style template for PET data directory names. Default: TAU_%%d_%%s'
     )
+    parser.add_argument(
+        '--force', action='store_true',
+        help='Recompute all steps even if output files already exist.'
+    )
 
 
 def build_config(args: argparse.Namespace) -> PipelineConfig:
@@ -106,4 +111,5 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         subjects_template=args.subjects_template,
         data_template=args.data_template,
         patients=patients,
+        force=args.force,
     )
