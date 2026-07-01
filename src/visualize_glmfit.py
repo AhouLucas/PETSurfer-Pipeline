@@ -135,19 +135,30 @@ def main() -> None:
         print(f'ERROR: surface file not found: {surf_path}', file=sys.stderr)
         sys.exit(1)
 
-    # Stack all contrast overlays onto one surface spec
-    overlay_parts = ''.join(
-        f':overlay={os.path.join(d, "sig.mgh")}:overlay_threshold={args.overlay_threshold}'
-        for d in contrast_dirs
-    )
-    overlay_spec = f'{surf_path}:annot=aparc.annot:annot_outline=1{overlay_parts}'
+    # One -f entry per contrast so each gets its own name in the Layers panel.
+    # Only the first is visible by default; toggle the others in freeview.
+    f_args = []
+    for i, d in enumerate(contrast_dirs):
+        name = os.path.basename(d)
+        sig = os.path.join(d, 'sig.mgh')
+        visible = '' if i == 0 else ':visible=0'
+        spec = (
+            f'{surf_path}'
+            ':annot=aparc.annot'
+            ':annot_outline=1'
+            f':overlay={sig}'
+            f':overlay_threshold={args.overlay_threshold}'
+            f':name={name}'
+            f'{visible}'
+        )
+        f_args += ['-f', spec]
 
     if len(contrast_dirs) > 1:
         names = ', '.join(os.path.basename(d) for d in contrast_dirs)
         print(f'Loading {len(contrast_dirs)} contrasts: {names}')
         print('Toggle overlay visibility in the freeview Layers panel.')
 
-    cmd = ['freeview', '-f', overlay_spec, '-viewport', '3d']
+    cmd = ['freeview'] + f_args + ['-viewport', '3d']
     print('Running:', ' '.join(cmd))
     subprocess.run(cmd, check=True)
 
