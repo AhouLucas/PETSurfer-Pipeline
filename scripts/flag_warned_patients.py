@@ -12,7 +12,7 @@ Usage:
 import argparse
 import re
 import sys
-import openpyxl
+import pandas as pd
 
 # Matches lines like: "2026-07-01 12:00:00  WARNING   ... patient 1234 / T0 ..."
 # The patient ID and timestamp appear as "patient <id> / <timestamp>" anywhere in the line.
@@ -32,23 +32,22 @@ def parse_warnings(log_path: str) -> set[tuple[int, str]]:
 
 def flag_excel(excel_path: str, warned: set[tuple[int, str]]) -> int:
     """Set include flag to 0 for warned (patient_id, timestamp) rows. Returns count of rows changed."""
-    wb = openpyxl.load_workbook(excel_path)
-    ws = wb.active
+    df = pd.read_excel(excel_path, header=0)
 
-    changed = 0
-    for row in ws.iter_rows(min_row=2):  # skip header
-        try:
-            patient_id = int(row[1].value)
-            timestamp = str(row[2].value).strip()
-        except (TypeError, ValueError):
-            continue
+    include_col = df.columns[0]
+    patient_col = df.columns[1]
+    timestamp_col = df.columns[2]
 
-        if (patient_id, timestamp) in warned:
-            if row[0].value != 0:
-                row[0].value = 0
-                changed += 1
+    mask = df.apply(
+        lambda r: (int(r[patient_col]), str(r[timestamp_col]).strip()) in warned,
+        axis=1,
+    )
+    changed = int((mask & (df[include_col] != 0)).sum())
+    df.loc[mask, include_col] = 0
 
-    wb.save(excel_path)
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+
     return changed
 
 
