@@ -261,69 +261,60 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
     for hemi in HEMISPHERES:
         # Concat
         concat_path = os.path.join(output_dir, f'all.{hemi}.pet.fsaverage.sm00.nii.gz')
-        if os.path.exists(concat_path):
-            logger.info('[SKIPPED] concat %s — output already present: %s', hemi, concat_path)
-        else:
-            logger.info('[RUNNING] concat %s — %d subjects', hemi, len(patients))
-            try:
-                subprocess.run(
-                    ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
-                    check=True,
-                )
-            except subprocess.CalledProcessError as e:
-                logger.error('mri_concat failed for %s (exit code %d).', hemi, e.returncode)
-                sys.exit(1)
-            logger.info('[DONE] concat %s → %s', hemi, concat_path)
+        logger.info('[RUNNING] concat %s — %d subjects', hemi, len(patients))
+        try:
+            subprocess.run(
+                ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error('mri_concat failed for %s (exit code %d).', hemi, e.returncode)
+            sys.exit(1)
+        logger.info('[DONE] concat %s → %s', hemi, concat_path)
 
         # Smooth
         smoothed_path = os.path.join(
             output_dir, f'all.{hemi}.pet.fsaverage.sm{fwhm:02d}.nii.gz'
         )
-        if os.path.exists(smoothed_path):
-            logger.info('[SKIPPED] smooth %s — output already present: %s', hemi, smoothed_path)
-        else:
-            logger.info('[RUNNING] smooth %s (fwhm=%d)', hemi, fwhm)
-            try:
-                subprocess.run([
-                    'mris_fwhm',
-                    '--smooth-only',
-                    '--i',     concat_path,
-                    '--fwhm',  str(fwhm),
-                    '--o',     smoothed_path,
-                    '--cortex',
-                    '--s',     'fsaverage',
-                    '--hemi',  hemi,
-                ], check=True)
-            except subprocess.CalledProcessError as e:
-                logger.error('mris_fwhm failed for %s (exit code %d).', hemi, e.returncode)
-                sys.exit(1)
-            logger.info('[DONE] smooth %s → %s', hemi, smoothed_path)
+        logger.info('[RUNNING] smooth %s (fwhm=%d)', hemi, fwhm)
+        try:
+            subprocess.run([
+                'mris_fwhm',
+                '--smooth-only',
+                '--i',     concat_path,
+                '--fwhm',  str(fwhm),
+                '--o',     smoothed_path,
+                '--cortex',
+                '--s',     'fsaverage',
+                '--hemi',  hemi,
+            ], check=True)
+        except subprocess.CalledProcessError as e:
+            logger.error('mris_fwhm failed for %s (exit code %d).', hemi, e.returncode)
+            sys.exit(1)
+        logger.info('[DONE] smooth %s → %s', hemi, smoothed_path)
 
         # GLM
         glmfit_dir = os.path.join(
             output_dir, f'all.{hemi}.pet.fsaverage.sm{fwhm:02d}.glmfit'
         )
-        if os.path.exists(glmfit_dir):
-            logger.info('[SKIPPED] glmfit %s — output directory already present: %s', hemi, glmfit_dir)
-        else:
-            logger.info('[RUNNING] glmfit %s', hemi)
-            contrast_flags = []
-            for c in args.contrast_matrix_path:
-                contrast_flags += ['--C', c]
-            try:
-                subprocess.run([
-                    'mri_glmfit',
-                    '--y',      smoothed_path,
-                    '--fsgd',   fsgd_path, args.design,
-                    *contrast_flags,
-                    '--surf',   'fsaverage', hemi,
-                    '--cortex',
-                    '--o',      glmfit_dir,
-                ], check=True)
-            except subprocess.CalledProcessError as e:
-                logger.error('mri_glmfit failed for %s (exit code %d).', hemi, e.returncode)
-                sys.exit(1)
-            logger.info('[DONE] glmfit %s → %s', hemi, glmfit_dir)
+        logger.info('[RUNNING] glmfit %s', hemi)
+        contrast_flags = []
+        for c in args.contrast_matrix_path:
+            contrast_flags += ['--C', c]
+        try:
+            subprocess.run([
+                'mri_glmfit',
+                '--y',      smoothed_path,
+                '--fsgd',   fsgd_path, args.design,
+                *contrast_flags,
+                '--surf',   'fsaverage', hemi,
+                '--cortex',
+                '--o',      glmfit_dir,
+            ], check=True)
+        except subprocess.CalledProcessError as e:
+            logger.error('mri_glmfit failed for %s (exit code %d).', hemi, e.returncode)
+            sys.exit(1)
+        logger.info('[DONE] glmfit %s → %s', hemi, glmfit_dir)
 
     logger.info('Analysis complete. All outputs written to: %s', output_dir)
 
