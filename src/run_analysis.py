@@ -15,23 +15,20 @@ This script picks up from those outputs and runs:
 The FSGD file can be provided via --fsgd-path; if omitted, it is auto-generated
 from the input Excel file using the same column conventions as excel_to_fsgd.py.
 
---- Directory-based usage (recommended) ---
-
+Usage:
     python src/run_analysis.py braak-stage/
 
-The script auto-discovers inputs inside the directory:
-  • Exactly one *.xlsx  → patient list (--excel-path)
-  • One or more *.mtx   → contrast matrices (--contrast-matrix-path)
-  • At most one *.fsgd  → existing FSGD file (--fsgd-path); if absent, one is generated
+The analysis directory must contain:
+  • Exactly one *.xlsx  → patient list
+  • One or more *.mtx   → contrast matrices
+  • At most one *.fsgd  → existing FSGD (if absent, one is auto-generated)
 
-All outputs (concat, smooth, GLM, FSGD, log) are written into the same directory.
-
---- Explicit flags (override auto-discovery) ---
+All outputs (concat, smooth, GLM, FSGD, log) are written into that directory.
+Explicit flags override auto-discovery:
 
     python src/run_analysis.py braak-stage/ \\
         [--excel-path patients.xlsx] \\
         [--contrast-matrix-path c1.mtx c2.mtx] \\
-        [--output-dir ./analysis_out] \\
         [--subjects-dir ./data] \\
         [--fwhm 10] \\
         [--fsgd-path existing.fsgd] \\
@@ -82,10 +79,6 @@ def resolve_inputs(args: argparse.Namespace, logger: logging.Logger) -> None:
     Fills in args.excel_path, args.contrast_matrix_path, and args.fsgd_path in-place.
     Exits with a clear error if required files are missing or ambiguous.
     """
-    if not args.analysis_dir:
-        # No directory given — explicit flags must supply everything; validated later.
-        return
-
     d = args.analysis_dir
 
     if not os.path.isdir(d):
@@ -194,15 +187,10 @@ def resolve_fsgd(args: argparse.Namespace, output_dir: str, logger: logging.Logg
         logger.info('[FSGD] Using provided file: %s', args.fsgd_path)
         return args.fsgd_path
 
-    # Auto-generate
-    if not args.title:
-        logger.error(
-            '--title is required when auto-generating the FSGD file. '
-            'Provide --title or supply an existing FSGD via --fsgd-path.'
-        )
-        sys.exit(1)
+    # Auto-generate — title defaults to the analysis directory name
+    title = args.title or Path(output_dir).resolve().name
+    logger.info('[FSGD] Auto-generating from Excel: %s (title: %s)', args.excel_path, title)
 
-    logger.info('[FSGD] Auto-generating from Excel: %s', args.excel_path)
     headers, data_rows = read_excel(args.excel_path)
     discrete_cols, continuous_cols = classify_columns(headers, data_rows)
 
@@ -218,7 +206,7 @@ def resolve_fsgd(args: argparse.Namespace, output_dir: str, logger: logging.Logg
         data_rows=data_rows,
         discrete_cols=discrete_cols,
         continuous_cols=continuous_cols,
-        title=args.title,
+        title=title,
         default_var=args.default_var,
         mean_center=args.mean_center,
         subjects_template=args.subjects_template,
@@ -236,7 +224,7 @@ def resolve_fsgd(args: argparse.Namespace, output_dir: str, logger: logging.Logg
 
 def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
     subjects_dir = args.subjects_dir
-    output_dir = args.output_dir
+    output_dir = args.analysis_dir
     fwhm = args.fwhm
     subjects_template = args.subjects_template
 
@@ -244,13 +232,6 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     # --- Auto-discover inputs from analysis directory ---
     resolve_inputs(args, logger)
-
-    if not args.excel_path:
-        logger.error('--excel-path is required (or pass an analysis directory containing a .xlsx file).')
-        sys.exit(1)
-    if not args.contrast_matrix_path:
-        logger.error('--contrast-matrix-path is required (or pass an analysis directory containing .mtx files).')
-        sys.exit(1)
 
     # --- Read patient list ---
     patients = read_patients_from_excel(args.excel_path)
@@ -350,9 +331,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # --- Analysis directory (recommended entry point) ---
+    # --- Analysis directory ---
     parser.add_argument(
-        'analysis_dir', nargs='?', default=None,
+        'analysis_dir',
         help=(
             'Directory containing analysis inputs: one *.xlsx, one or more *.mtx, '
             'and optionally one *.fsgd. All outputs are written here. '
@@ -360,7 +341,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
-    # --- Inputs (optional when analysis_dir is given) ---
+    # --- Inputs (optional: auto-discovered from analysis_dir) ---
     parser.add_argument(
         '--excel-path', default=None,
         help='Path to the patient list Excel file (.xlsx). Auto-discovered from analysis_dir if omitted.',
@@ -370,17 +351,10 @@ def parse_args() -> argparse.Namespace:
         help='Path(s) to GLM contrast matrix file(s) (.mtx). Auto-discovered from analysis_dir if omitted.',
     )
 
-    # --- Directories ---
+    # --- Subjects directory ---
     parser.add_argument(
         '--subjects-dir', default='/media/vmalotaux/data/subjects-v.7.2.0',
         help='Root directory containing FreeSurfer subject folders. Default: /media/vmalotaux/data/subjects-v.7.2.0',
-    )
-    parser.add_argument(
-        '--output-dir', default=None,
-        help=(
-            'Directory for analysis outputs (concat, smooth, GLM, FSGD, log). '
-            'Default: same as --subjects-dir.'
-        ),
     )
 
     # --- Analysis parameters ---
@@ -401,7 +375,7 @@ def parse_args() -> argparse.Namespace:
     fsgd_group = parser.add_argument_group(
         'FSGD',
         'Provide --fsgd-path to use an existing FSGD file, or omit it to '
-        'auto-generate one from the Excel file (requires --title).',
+        'auto-generate one from the Excel file.',
     )
     fsgd_group.add_argument(
         '--fsgd-path', default=None,
@@ -409,7 +383,7 @@ def parse_args() -> argparse.Namespace:
     )
     fsgd_group.add_argument(
         '--title', default=None,
-        help='Title for the auto-generated FSGD file (required when not using --fsgd-path).',
+        help='Title for the auto-generated FSGD file. Defaults to the analysis directory name.',
     )
     fsgd_group.add_argument(
         '--default-var', default=None,
@@ -455,10 +429,5 @@ def setup_logger(output_dir: str) -> logging.Logger:
 
 if __name__ == '__main__':
     args = parse_args()
-
-    # Prefer analysis_dir as output location; fall back to subjects_dir
-    if args.output_dir is None:
-        args.output_dir = args.analysis_dir if args.analysis_dir else args.subjects_dir
-
-    logger = setup_logger(args.output_dir)
+    logger = setup_logger(args.analysis_dir)
     run_analysis(args, logger)
