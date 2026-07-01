@@ -131,8 +131,8 @@ def resolve_inputs(args: argparse.Namespace, logger: logging.Logger) -> None:
             sys.exit(1)
         if len(fsgd_files) == 1:
             fsgd_file = fsgd_files[0]
-            first_line = fsgd_file.read_text().split('\n', 1)[0]
-            if first_line.strip() == FSGD_GENERATED_MARKER:
+            last_line = fsgd_file.read_text().rstrip('\n').rsplit('\n', 1)[-1]
+            if last_line.strip() == FSGD_GENERATED_MARKER:
                 logger.info('[DISCOVERY] FSGD: %s (auto-generated, will be regenerated)', fsgd_file)
             else:
                 args.fsgd_path = str(fsgd_file)
@@ -221,7 +221,7 @@ def resolve_fsgd(args: argparse.Namespace, output_dir: str, logger: logging.Logg
     )
 
     fsgd_path = os.path.join(output_dir, 'analysis.fsgd')
-    Path(fsgd_path).write_text(FSGD_GENERATED_MARKER + '\n' + fsgd_content)
+    Path(fsgd_path).write_text(fsgd_content + FSGD_GENERATED_MARKER + '\n')
     logger.info('[FSGD] Written to: %s', fsgd_path)
     return fsgd_path
 
