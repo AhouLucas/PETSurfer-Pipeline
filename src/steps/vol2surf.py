@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from config import PipelineConfig, add_common_args, build_config
-from steps.gtmpvc import GTMPVC_OUTPUT_FILES
+from steps.gtmpvc import GTMPVC_OUTPUT_FILES, _indent
 
 
 def _run_vol2surf_patient(
@@ -49,7 +49,7 @@ def _run_vol2surf_patient(
     for hemi in ('lh', 'rh'):
         output_path = os.path.join(subject_dir, 'mri', f'{hemi}.pet.fsaverage.sm00.nii.gz')
 
-        if os.path.exists(output_path):
+        if not config.force and os.path.exists(output_path):
             logger.info('[SKIPPED] vol2surf %s — %s — output already present', hemi, label)
             continue
 
@@ -64,9 +64,10 @@ def _run_vol2surf_patient(
                 '--o',          output_path,
                 '--cortex',
                 '--trgsubject', 'fsaverage'
-            ], check=True)
+            ], check=True, stderr=subprocess.PIPE, text=True)
         except subprocess.CalledProcessError as e:
-            logger.warning('[FAILED] vol2surf %s — %s — command returned exit code %d', hemi, label, e.returncode)
+            stderr = _indent(e.stderr)
+            logger.warning('[FAILED] vol2surf %s — %s — exit code %d\n%s', hemi, label, e.returncode, stderr)
             success = False
 
     return success

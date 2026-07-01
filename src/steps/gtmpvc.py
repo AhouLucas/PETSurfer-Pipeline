@@ -29,6 +29,11 @@ GTMPVC_OUTPUT_FILES = [
 ]
 
 
+def _indent(text: str, prefix: str = '    ') -> str:
+    """Indent each non-empty line of text for readable log embedding."""
+    return '\n'.join(prefix + line for line in text.splitlines() if line.strip())
+
+
 def _run_gtmpvc_patient(
     config: PipelineConfig,
     patient_id: int,
@@ -43,7 +48,7 @@ def _run_gtmpvc_patient(
     output_dir = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
 
     output_files = [os.path.join(output_dir, f) for f in GTMPVC_OUTPUT_FILES]
-    if all(os.path.exists(p) for p in output_files):
+    if not config.force and all(os.path.exists(p) for p in output_files):
         logger.info('[SKIPPED] gtmpvc — %s — output already present at %s', label, output_dir)
         return True
 
@@ -72,9 +77,10 @@ def _run_gtmpvc_patient(
             '--rescale',       '8', '47',
             '--save-input',
             '--o',             output_dir
-        ], check=True)
+        ], check=True, stderr=subprocess.PIPE, text=True)
     except subprocess.CalledProcessError as e:
-        logger.warning('[FAILED] gtmpvc — %s — command returned exit code %d', label, e.returncode)
+        stderr = _indent(e.stderr)
+        logger.warning('[FAILED] gtmpvc — %s — exit code %d\n%s', label, e.returncode, stderr)
         return False
 
     return True
