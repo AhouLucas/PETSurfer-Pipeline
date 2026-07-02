@@ -35,12 +35,16 @@ DEFAULT_DATA_TEMPLATE = 'TAU_%d_%s'
 
 def ask_path(prompt_text: str, must_exist: bool = True, is_file: bool = True,
              default: str | None = None) -> str:
-    """Ask for a filesystem path; re-prompt if the path doesn't exist."""
+    """Ask for a filesystem path; re-prompt if the path doesn't exist.
+
+    Relative paths are resolved against the current working directory.
+    """
     while True:
         value = Prompt.ask(prompt_text, default=default or "")
         if not value:
             console.print("[red]Please enter a path.[/red]")
             continue
+        value = str(Path(value).resolve())
         if must_exist:
             check = os.path.isfile(value) if is_file else os.path.isdir(value)
             if not check:
