@@ -50,14 +50,15 @@ if __name__ == '__main__':
     add_common_args(parser)
     args = parser.parse_args()
 
+    logger = setup_logger()
+    logger.info('Preprocessing started. Log file: %s', os.path.abspath(LOG_FILE))
+
     try:
         config = build_config(args)
     except ValueError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        logger.debug('Validation error details:\n%s', e)
+        logger.error('Input error — see the log file for details: %s', os.path.abspath(LOG_FILE))
         sys.exit(1)
-
-    logger = setup_logger()
-    logger.info('Preprocessing started. Log file: %s', os.path.abspath(LOG_FILE))
 
     for patient_id, timestamp in config.patients:
         ok = _run_gtmpvc_patient(config, patient_id, timestamp, logger)

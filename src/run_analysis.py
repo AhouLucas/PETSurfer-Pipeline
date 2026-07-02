@@ -445,7 +445,7 @@ def setup_logger(output_dir: str) -> logging.Logger:
     log_path = os.path.join(output_dir, f'analysis_{timestamp}.log')
 
     logger = logging.getLogger('run_analysis')
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)  # let handlers decide what to show
     logger.propagate = False
 
     fmt = logging.Formatter('%(asctime)s  %(levelname)-8s  %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -461,16 +461,17 @@ def setup_logger(output_dir: str) -> logging.Logger:
     logger.addHandler(stream_handler)
 
     logger.info('Log file: %s', log_path)
-    return logger
+    return logger, log_path
 
 
 if __name__ == '__main__':
     args = parse_args()
-    logger = setup_logger(args.analysis_dir)
+    logger, log_path = setup_logger(args.analysis_dir)
     try:
         run_analysis(args, logger)
     except ValueError as e:
-        logger.error('%s', e)
+        logger.debug('Validation error details:\n%s', e)
+        logger.error('Input error — see the log file for details: %s', log_path)
         sys.exit(1)
     except Exception as e:
         logger.exception('Unexpected error: %s', e)
