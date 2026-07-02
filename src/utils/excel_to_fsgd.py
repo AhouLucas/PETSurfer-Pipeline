@@ -59,7 +59,6 @@ COL_VARIABLES_START = 3  # columns from this index onward are variables
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-logging.basicConfig(format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -466,6 +465,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    logging.basicConfig(format="%(levelname)s: %(message)s")
     args = parse_args()
 
     if args.verbose:

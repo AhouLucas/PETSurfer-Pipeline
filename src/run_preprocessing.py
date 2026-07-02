@@ -25,6 +25,7 @@ LOG_FILE = 'src/pipeline_rerun.log'
 def setup_logger() -> logging.Logger:
     logger = logging.getLogger('petsurfer')
     logger.setLevel(logging.DEBUG)
+    logger.propagate = False
 
     fmt = logging.Formatter('%(asctime)s  %(levelname)-8s  %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S')
@@ -49,9 +50,13 @@ if __name__ == '__main__':
     add_common_args(parser)
     args = parser.parse_args()
 
-    config = build_config(args)
-    logger = setup_logger()
+    try:
+        config = build_config(args)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
+    logger = setup_logger()
     logger.info('Preprocessing started. Log file: %s', os.path.abspath(LOG_FILE))
 
     for patient_id, timestamp in config.patients:

@@ -446,6 +446,7 @@ def setup_logger(output_dir: str) -> logging.Logger:
 
     logger = logging.getLogger('run_analysis')
     logger.setLevel(logging.INFO)
+    logger.propagate = False
 
     fmt = logging.Formatter('%(asctime)s  %(levelname)-8s  %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -468,6 +469,9 @@ if __name__ == '__main__':
     logger = setup_logger(args.analysis_dir)
     try:
         run_analysis(args, logger)
+    except ValueError as e:
+        logger.error('%s', e)
+        sys.exit(1)
     except Exception as e:
         logger.exception('Unexpected error: %s', e)
         sys.exit(1)
