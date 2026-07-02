@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from config import PipelineConfig, add_common_args, build_config
+from utils.config import PipelineConfig, add_common_args, build_config
 from steps.gtmpvc import GTMPVC_OUTPUT_FILES, _indent
 
 

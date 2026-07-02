@@ -18,7 +18,7 @@ import sys
 # Allow running as a script from the src/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from config import PipelineConfig, add_common_args, build_config
+from utils.config import PipelineConfig, add_common_args, build_config
 
 # Files that must exist inside the gtmpvc output directory before the step is
 # considered complete (used both for "already done" detection and as the
