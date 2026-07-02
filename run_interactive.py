@@ -7,8 +7,10 @@ Usage:
 """
 
 import argparse
+import glob
 import logging
 import os
+import readline
 import subprocess
 import sys
 from pathlib import Path
@@ -33,25 +35,52 @@ DEFAULT_DATA_TEMPLATE = 'TAU_%d_%s'
 # Input helpers
 # ---------------------------------------------------------------------------
 
+def _path_completer(text: str, state: int) -> str | None:
+    """readline completer that expands filesystem paths including directories."""
+    pattern = os.path.expanduser(text) + '*'
+    matches = glob.glob(pattern)
+    # Append '/' to directories so the user can keep tabbing into them
+    matches = [m + '/' if os.path.isdir(m) else m for m in matches]
+    return matches[state] if state < len(matches) else None
+
+
 def ask_path(prompt_text: str, must_exist: bool = True, is_file: bool = True,
              default: str | None = None) -> str:
-    """Ask for a filesystem path; re-prompt if the path doesn't exist.
+    """Ask for a filesystem path with tab-completion; re-prompt if the path doesn't exist.
 
     Relative paths are resolved against the current working directory.
     """
-    while True:
-        value = Prompt.ask(prompt_text, default=default or "")
-        if not value:
-            console.print("[red]Please enter a path.[/red]")
-            continue
-        value = str(Path(value).resolve())
-        if must_exist:
-            check = os.path.isfile(value) if is_file else os.path.isdir(value)
-            if not check:
-                kind = "file" if is_file else "directory"
-                console.print(f"[red]That {kind} doesn't exist — please try again.[/red]")
-                continue
-        return value
+    readline.set_completer(_path_completer)
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind('tab: complete')
+
+    try:
+        while True:
+            # Print the Rich-styled prompt manually; use plain input() so readline works
+            default_hint = f" [dim](default: {default})[/dim]" if default else ""
+            console.print(f"{prompt_text}{default_hint}: ", end="")
+            try:
+                value = input()
+            except EOFError:
+                value = ""
+            if not value:
+                if default:
+                    value = default
+                else:
+                    console.print("[red]Please enter a path.[/red]")
+                    continue
+            value = str(Path(value).resolve())
+            if must_exist:
+                check = os.path.isfile(value) if is_file else os.path.isdir(value)
+                if not check:
+                    kind = "file" if is_file else "directory"
+                    console.print(f"[red]That {kind} doesn't exist — please try again.[/red]")
+                    continue
+            return value
+    finally:
+        # Restore readline to default so it doesn't interfere with Rich prompts
+        readline.set_completer(None)
+        readline.parse_and_bind('tab: self-insert')
 
 
 def _clear_logger(name: str) -> None:
