@@ -15,11 +15,11 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import add_common_args, build_config
+from utils.config import add_common_args, build_config
 from steps.gtmpvc import _run_gtmpvc_patient
 from steps.vol2surf import _run_vol2surf_patient
 
-LOG_FILE = 'src/pipeline.log'
+LOG_FILE = 'src/pipeline_rerun.log'
 
 
 def setup_logger() -> logging.Logger:

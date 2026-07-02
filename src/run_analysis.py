@@ -50,7 +50,7 @@ from pathlib import Path
 # Allow imports from src/
 sys.path.insert(0, os.path.dirname(__file__))
 
-from excel_to_fsgd import (
+from utils.excel_to_fsgd import (
     build_class_label,
     classify_columns,
     generate_fsgd,
