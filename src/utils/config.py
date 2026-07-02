@@ -94,10 +94,34 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
     """
     patients = read_patients_from_excel(args.excel_path)
 
-    if not patients:
+    # Directory existence checks
+    if not os.path.isdir(args.subjects_dir):
         raise ValueError(
-            "No included patients found in the Excel file. "
-            "Check that column 0 (include flag) has at least one row set to 1."
+            f"Subjects directory not found: {args.subjects_dir}\n"
+            "Pass --subjects-dir with the correct path."
+        )
+    if not os.path.isdir(args.data_dir):
+        raise ValueError(
+            f"Data directory not found: {args.data_dir}\n"
+            "Pass --data-dir with the correct path."
+        )
+    if getattr(args, 'fsgd_path', None) and not os.path.exists(args.fsgd_path):
+        raise ValueError(f"FSGD file not found: {args.fsgd_path}")
+    if getattr(args, 'contrast_matrix_path', None) and not os.path.exists(args.contrast_matrix_path):
+        raise ValueError(f"Contrast matrix file not found: {args.contrast_matrix_path}")
+
+    # Per-patient subject directory existence
+    missing_dirs = []
+    for pid, ts in patients:
+        subject_name = args.subjects_template % (pid, ts)
+        path = os.path.join(args.subjects_dir, subject_name)
+        if not os.path.isdir(path):
+            missing_dirs.append(f"  {path}")
+    if missing_dirs:
+        raise ValueError(
+            f"The following subject directories were not found under {args.subjects_dir}:\n"
+            + "\n".join(missing_dirs)
+            + "\nCheck that the patients in your spreadsheet have been processed by FreeSurfer."
         )
 
     return PipelineConfig(

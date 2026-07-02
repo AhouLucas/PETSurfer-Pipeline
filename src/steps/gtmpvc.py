@@ -65,22 +65,24 @@ def _run_gtmpvc_patient(
         return False
 
     logger.info('[RUNNING] gtmpvc — %s', label)
-    try:
-        subprocess.run([
-            'mri_gtmpvc',
-            '--i',             pet_path,
-            '--reg',           reg_path,
-            '--seg',           gtmseg_path,
-            '--default-seg-merge',
-            '--auto-mask',     '1', '.01',
-            '--no-tfe',
-            '--rescale',       '8', '47',
-            '--save-input',
-            '--o',             output_dir
-        ], check=True, stderr=subprocess.PIPE, text=True)
-    except subprocess.CalledProcessError as e:
-        stderr = _indent(e.stderr)
-        logger.warning('[FAILED] gtmpvc — %s — exit code %d\n%s', label, e.returncode, stderr)
+    result = subprocess.run([
+        'mri_gtmpvc',
+        '--i',             pet_path,
+        '--reg',           reg_path,
+        '--seg',           gtmseg_path,
+        '--default-seg-merge',
+        '--auto-mask',     '1', '.01',
+        '--no-tfe',
+        '--rescale',       '8', '47',
+        '--save-input',
+        '--o',             output_dir
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    logger.debug('[OUTPUT] mri_gtmpvc %s stdout:\n%s\nstderr:\n%s', label, result.stdout, result.stderr)
+    if result.returncode != 0:
+        logger.warning(
+            '[FAILED] gtmpvc — %s — exit code %d. See the log file for details.',
+            label, result.returncode,
+        )
         return False
 
     return True

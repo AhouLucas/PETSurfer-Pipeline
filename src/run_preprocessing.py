@@ -31,9 +31,11 @@ def setup_logger() -> logging.Logger:
 
     fh = logging.FileHandler(LOG_FILE, mode='a')
     fh.setFormatter(fmt)
+    fh.setLevel(logging.DEBUG)
 
     ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(fmt)
+    ch.setLevel(logging.INFO)
 
     logger.addHandler(fh)
     logger.addHandler(ch)

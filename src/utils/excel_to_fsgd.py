@@ -87,13 +87,24 @@ def build_subject_id(patient_id: int, timestamp: str, subjects_template: str) ->
 
 def read_excel(path: str, sheet_name: str | None = None) -> tuple[list[str], list[list]]:
     """
-    Read the Excel file and return (headers, rows).
+    Read the Excel or ODS file and return (headers, rows).
 
     Each row is a list of cell values with length == len(headers).
     Rows where the include flag (column 1) is 0 are dropped.
     """
+    import os
+    ext = os.path.splitext(path)[1].lower()
+    kwargs: dict = {'sheet_name': sheet_name or 0, 'header': 0}
+    if ext == '.ods':
+        kwargs['engine'] = 'odf'
+    elif ext not in ('.xlsx', '.xls'):
+        logger.error(
+            "Unsupported file format: '%s'. Expected an .xlsx or .ods file.",
+            os.path.basename(path),
+        )
+        sys.exit(1)
     try:
-        df = pd.read_excel(path, sheet_name=sheet_name or 0, header=0)
+        df = pd.read_excel(path, **kwargs)
     except ValueError as e:
         logger.error("Sheet not found: %s", e)
         sys.exit(1)

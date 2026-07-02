@@ -90,21 +90,27 @@ def resolve_inputs(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     # --- Excel ---
     if not args.excel_path:
-        xlsx_files = sorted(Path(d).glob('*.xlsx'))
-        if len(xlsx_files) == 0:
+        spreadsheets = sorted(
+            Path(d).glob('*.xlsx')
+        ) + sorted(
+            Path(d).glob('*.xls')
+        ) + sorted(
+            Path(d).glob('*.ods')
+        )
+        if len(spreadsheets) == 0:
             logger.error(
-                'No .xlsx file found in %s. Add your patient list spreadsheet '
-                'or pass --excel-path explicitly.', d
+                'No spreadsheet (.xlsx or .ods) found in %s. Add your patient list '
+                'spreadsheet or pass --excel-path explicitly.', d
             )
             sys.exit(1)
-        if len(xlsx_files) > 1:
+        if len(spreadsheets) > 1:
             logger.error(
-                'Multiple .xlsx files found in %s:\n  %s\n'
-                'Use --excel-path to specify which one to use.',
-                d, '\n  '.join(str(f) for f in xlsx_files)
+                'Multiple spreadsheets found in %s:\n  %s\n'
+                'Keep only one, or pass --excel-path to specify which one to use.',
+                d, '\n  '.join(str(f) for f in spreadsheets)
             )
             sys.exit(1)
-        args.excel_path = str(xlsx_files[0])
+        args.excel_path = str(spreadsheets[0])
         logger.info('[DISCOVERY] Excel: %s', args.excel_path)
 
     # --- Contrast matrices ---
@@ -248,6 +254,14 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
         sys.exit(1)
     logger.info('Loaded %d patient scan(s) from %s', len(patients), args.excel_path)
 
+    # --- Validate directories ---
+    if not os.path.isdir(subjects_dir):
+        logger.error(
+            'Subjects directory not found: %s\n'
+            'Pass --subjects-dir with the correct path.', subjects_dir
+        )
+        sys.exit(1)
+
     # --- Validate preprocessing outputs (fail fast, list everything at once) ---
     if not check_vol2surf_outputs(patients, subjects_dir, subjects_template, logger):
         sys.exit(1)
@@ -270,13 +284,16 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
         # Concat
         concat_path = os.path.join(output_dir, f'all.{hemi}.pet.fsaverage.sm00.nii.gz')
         logger.info('[RUNNING] concat %s — %d subjects', hemi, len(patients))
-        try:
-            subprocess.run(
-                ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
-                check=True,
+        result = subprocess.run(
+            ['mri_concat'] + vol2surf_paths[hemi] + ['--o', concat_path, '--prune'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        logger.debug('[OUTPUT] mri_concat %s stdout:\n%s\nstderr:\n%s', hemi, result.stdout, result.stderr)
+        if result.returncode != 0:
+            logger.error(
+                'mri_concat failed for %s (exit code %d). See the log file for details.',
+                hemi, result.returncode,
             )
-        except subprocess.CalledProcessError as e:
-            logger.error('mri_concat failed for %s (exit code %d).', hemi, e.returncode)
             sys.exit(1)
         logger.info('[DONE] concat %s → %s', hemi, concat_path)
 
@@ -285,19 +302,22 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
             output_dir, f'all.{hemi}.pet.fsaverage.sm{fwhm:02d}.nii.gz'
         )
         logger.info('[RUNNING] smooth %s (fwhm=%d)', hemi, fwhm)
-        try:
-            subprocess.run([
-                'mris_fwhm',
-                '--smooth-only',
-                '--i',     concat_path,
-                '--fwhm',  str(fwhm),
-                '--o',     smoothed_path,
-                '--cortex',
-                '--s',     'fsaverage',
-                '--hemi',  hemi,
-            ], check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error('mris_fwhm failed for %s (exit code %d).', hemi, e.returncode)
+        result = subprocess.run([
+            'mris_fwhm',
+            '--smooth-only',
+            '--i',     concat_path,
+            '--fwhm',  str(fwhm),
+            '--o',     smoothed_path,
+            '--cortex',
+            '--s',     'fsaverage',
+            '--hemi',  hemi,
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        logger.debug('[OUTPUT] mris_fwhm %s stdout:\n%s\nstderr:\n%s', hemi, result.stdout, result.stderr)
+        if result.returncode != 0:
+            logger.error(
+                'mris_fwhm failed for %s (exit code %d). See the log file for details.',
+                hemi, result.returncode,
+            )
             sys.exit(1)
         logger.info('[DONE] smooth %s → %s', hemi, smoothed_path)
 
@@ -309,18 +329,21 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
         contrast_flags = []
         for c in args.contrast_matrix_path:
             contrast_flags += ['--C', c]
-        try:
-            subprocess.run([
-                'mri_glmfit',
-                '--y',      smoothed_path,
-                '--fsgd',   fsgd_path, args.design,
-                *contrast_flags,
-                '--surf',   'fsaverage', hemi,
-                '--cortex',
-                '--o',      glmfit_dir,
-            ], check=True)
-        except subprocess.CalledProcessError as e:
-            logger.error('mri_glmfit failed for %s (exit code %d).', hemi, e.returncode)
+        result = subprocess.run([
+            'mri_glmfit',
+            '--y',      smoothed_path,
+            '--fsgd',   fsgd_path, args.design,
+            *contrast_flags,
+            '--surf',   'fsaverage', hemi,
+            '--cortex',
+            '--o',      glmfit_dir,
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        logger.debug('[OUTPUT] mri_glmfit %s stdout:\n%s\nstderr:\n%s', hemi, result.stdout, result.stderr)
+        if result.returncode != 0:
+            logger.error(
+                'mri_glmfit failed for %s (exit code %d). See the log file for details.',
+                hemi, result.returncode,
+            )
             sys.exit(1)
         logger.info('[DONE] glmfit %s → %s', hemi, glmfit_dir)
 
@@ -428,10 +451,12 @@ def setup_logger(output_dir: str) -> logging.Logger:
 
     file_handler = logging.FileHandler(log_path, mode='w')
     file_handler.setFormatter(fmt)
+    file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
 
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(fmt)
+    stream_handler.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
 
     logger.info('Log file: %s', log_path)

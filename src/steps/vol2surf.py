@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from utils.config import PipelineConfig, add_common_args, build_config
-from steps.gtmpvc import GTMPVC_OUTPUT_FILES, _indent
+from steps.gtmpvc import GTMPVC_OUTPUT_FILES
 
 
 def _run_vol2surf_patient(
@@ -54,20 +54,22 @@ def _run_vol2surf_patient(
             continue
 
         logger.info('[RUNNING] vol2surf %s — %s', hemi, label)
-        try:
-            subprocess.run([
-                'mri_vol2surf',
-                '--mov',        pet_path,
-                '--reg',        reg_path,
-                '--hemi',       hemi,
-                '--projfrac',   str(config.projfrac),
-                '--o',          output_path,
-                '--cortex',
-                '--trgsubject', 'fsaverage'
-            ], check=True, stderr=subprocess.PIPE, text=True)
-        except subprocess.CalledProcessError as e:
-            stderr = _indent(e.stderr)
-            logger.warning('[FAILED] vol2surf %s — %s — exit code %d\n%s', hemi, label, e.returncode, stderr)
+        result = subprocess.run([
+            'mri_vol2surf',
+            '--mov',        pet_path,
+            '--reg',        reg_path,
+            '--hemi',       hemi,
+            '--projfrac',   str(config.projfrac),
+            '--o',          output_path,
+            '--cortex',
+            '--trgsubject', 'fsaverage'
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        logger.debug('[OUTPUT] mri_vol2surf %s %s stdout:\n%s\nstderr:\n%s', hemi, label, result.stdout, result.stderr)
+        if result.returncode != 0:
+            logger.warning(
+                '[FAILED] vol2surf %s — %s — exit code %d. See the log file for details.',
+                hemi, label, result.returncode,
+            )
             success = False
 
     return success
