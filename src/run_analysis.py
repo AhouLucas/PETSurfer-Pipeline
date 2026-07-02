@@ -595,9 +595,9 @@ if __name__ == '__main__':
     try:
         run_analysis(args, logger)
     except ValueError as e:
-        logger.debug('Validation error details:\n%s', e)
-        logger.error('Input error — see the log file for details: %s', log_path)
+        logger.error('%s', e)
         sys.exit(1)
     except Exception as e:
-        logger.exception('Unexpected error: %s', e)
+        logger.debug('Unexpected error:', exc_info=True)
+        logger.error('An unexpected error occurred. See the log file for details: %s', log_path)
         sys.exit(1)

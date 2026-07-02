@@ -56,18 +56,25 @@ if __name__ == '__main__':
     try:
         config = build_config(args)
     except ValueError as e:
-        logger.debug('Validation error details:\n%s', e)
-        logger.error('Input error — see the log file for details: %s', os.path.abspath(LOG_FILE))
+        logger.error('%s', e)
         sys.exit(1)
 
-    for patient_id, timestamp in config.patients:
-        ok = _run_gtmpvc_patient(config, patient_id, timestamp, logger)
-        if ok:
-            _run_vol2surf_patient(config, patient_id, timestamp, logger)
-        else:
-            logger.warning(
-                '[SKIPPED] vol2surf — patient %s / %s — gtmpvc did not succeed',
-                patient_id, timestamp
-            )
+    try:
+        for patient_id, timestamp in config.patients:
+            ok = _run_gtmpvc_patient(config, patient_id, timestamp, logger)
+            if ok:
+                _run_vol2surf_patient(config, patient_id, timestamp, logger)
+            else:
+                logger.warning(
+                    '[SKIPPED] vol2surf — patient %s / %s — gtmpvc did not succeed',
+                    patient_id, timestamp
+                )
+    except Exception as e:
+        logger.debug('Unexpected error:', exc_info=True)
+        logger.error(
+            'An unexpected error occurred. See the log file for details: %s',
+            os.path.abspath(LOG_FILE),
+        )
+        sys.exit(1)
 
     logger.info('Preprocessing finished.')
