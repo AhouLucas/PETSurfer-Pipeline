@@ -50,12 +50,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         help='Path to the Excel spreadsheet with patient data.'
     )
     parser.add_argument(
-        '--subjects-dir', default='./data',
-        help='Directory containing FreeSurfer subject folders. Default: ./data'
+        '--subjects-dir', default='/media/vmalotaux/data/subjects-v.7.2.0',
+        help='Directory containing FreeSurfer subject folders. Default: /media/vmalotaux/data/subjects-v.7.2.0'
     )
     parser.add_argument(
-        '--data-dir', default='./dataPET',
-        help='Directory containing raw PET image folders. Default: ./dataPET'
+        '--data-dir', default='/media/vmalotaux/data/Yasmine',
+        help='Directory containing raw PET image folders. Default: /media/vmalotaux/data/Yasmine'
     )
     parser.add_argument(
         '--fsgd-path', default=None,
