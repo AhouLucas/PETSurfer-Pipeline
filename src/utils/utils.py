@@ -8,6 +8,25 @@ logger = logging.getLogger(__name__)
 
 _TIMESTAMP_RE = re.compile(r'^T\d+$')
 
+_LOG_FMT = '%(asctime)s  %(levelname)-8s  %(message)s'
+_LOG_DATEFMT = '%Y-%m-%d %H:%M:%S'
+
+
+class _IndentFormatter(logging.Formatter):
+    """Indent continuation lines of multi-line log messages with '│ '."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        text = super().format(record)
+        lines = text.splitlines()
+        if len(lines) <= 1:
+            return text
+        head, *rest = lines
+        return head + '\n' + '\n'.join('│   ' + l for l in rest)
+
+
+def make_formatter() -> _IndentFormatter:
+    return _IndentFormatter(fmt=_LOG_FMT, datefmt=_LOG_DATEFMT)
+
 _SUPPORTED_EXTENSIONS = {'.xlsx', '.xls', '.ods'}
 
 

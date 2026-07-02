@@ -50,6 +50,7 @@ from pathlib import Path
 # Allow imports from src/
 sys.path.insert(0, os.path.dirname(__file__))
 
+from utils.utils import make_formatter, read_patients_from_excel
 from utils.excel_to_fsgd import (
     build_class_label,
     classify_columns,
@@ -57,7 +58,6 @@ from utils.excel_to_fsgd import (
     read_excel,
     validate,
 )
-from utils.utils import read_patients_from_excel
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -448,7 +448,7 @@ def setup_logger(output_dir: str) -> logging.Logger:
     logger.setLevel(logging.DEBUG)  # let handlers decide what to show
     logger.propagate = False
 
-    fmt = logging.Formatter('%(asctime)s  %(levelname)-8s  %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    fmt = make_formatter()
 
     file_handler = logging.FileHandler(log_path, mode='w')
     file_handler.setFormatter(fmt)

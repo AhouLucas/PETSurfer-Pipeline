@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from utils.config import add_common_args, build_config
+from utils.utils import make_formatter
 from steps.gtmpvc import _run_gtmpvc_patient
 from steps.vol2surf import _run_vol2surf_patient
 
@@ -27,8 +28,7 @@ def setup_logger() -> logging.Logger:
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
-    fmt = logging.Formatter('%(asctime)s  %(levelname)-8s  %(message)s',
-                            datefmt='%Y-%m-%d %H:%M:%S')
+    fmt = make_formatter()
 
     fh = logging.FileHandler(LOG_FILE, mode='a')
     fh.setFormatter(fmt)
