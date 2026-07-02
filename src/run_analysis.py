@@ -233,6 +233,125 @@ def resolve_fsgd(args: argparse.Namespace, output_dir: str, logger: logging.Logg
 
 
 # ---------------------------------------------------------------------------
+# Contrast matrix validation
+# ---------------------------------------------------------------------------
+
+def _count_fsgd_regressors(fsgd_path: str, design: str) -> tuple[int, int, int]:
+    """
+    Parse an FSGD file and return (n_classes, n_variables, n_regressors).
+
+    Regressor formulas (from FreeSurfer DodsDoss wiki):
+      DODS: n_classes × (n_variables + 1)
+      DOSS: n_classes + n_variables
+    """
+    n_classes = 0
+    n_variables = 0
+
+    with open(fsgd_path) as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+            tokens = stripped.split()
+            tag = tokens[0].lower()
+            if tag == 'class':
+                n_classes += 1
+            elif tag == 'variables':
+                n_variables = len(tokens) - 1  # tokens[1:] are the variable names
+
+    if n_classes == 0:
+        # Single-group design with no explicit Class lines defaults to one class
+        n_classes = 1
+
+    if design == 'dods':
+        n_regressors = n_classes * (n_variables + 1)
+    else:  # doss
+        n_regressors = n_classes + n_variables
+
+    return n_classes, n_variables, n_regressors
+
+
+def _is_numeric_token(token: str) -> bool:
+    """Return True if *token* can be parsed as a float (including 'nan', 'inf')."""
+    try:
+        float(token)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_contrast_matrices(
+    mtx_paths: list[str],
+    fsgd_path: str,
+    design: str,
+    logger: logging.Logger,
+) -> None:
+    """
+    Validate the content of all contrast matrix (.mtx) files against the FSGD design.
+
+    Checks:
+      - Every token in each row is numeric (float-parseable).
+      - Every row has exactly n_regressors columns.
+
+    Raises ValueError listing all problems found across all files.
+    Called at startup — hard fail before any analysis is run.
+    """
+    n_classes, n_variables, n_regressors = _count_fsgd_regressors(fsgd_path, design)
+    logger.debug(
+        '[VALIDATE] FSGD has %d class(es), %d variable(s) → %d regressor(s) expected '
+        'per contrast row (%s design)',
+        n_classes, n_variables, n_regressors, design.upper(),
+    )
+
+    errors: list[str] = []
+
+    for mtx_path in mtx_paths:
+        mtx_name = os.path.basename(mtx_path)
+        try:
+            with open(mtx_path) as f:
+                raw_lines = f.readlines()
+        except OSError as e:
+            errors.append(f"  {mtx_name}: cannot read file — {e}")
+            continue
+
+        # Non-empty, non-comment lines are contrast rows
+        data_lines = [
+            (lineno, line.strip())
+            for lineno, line in enumerate(raw_lines, start=1)
+            if line.strip() and not line.strip().startswith('#')
+        ]
+
+        if not data_lines:
+            errors.append(f"  {mtx_name}: file is empty (no contrast rows found)")
+            continue
+
+        for lineno, line in data_lines:
+            tokens = line.split()
+            # Check each token is numeric
+            bad_tokens = [t for t in tokens if not _is_numeric_token(t)]
+            if bad_tokens:
+                errors.append(
+                    f"  {mtx_name}:{lineno}: non-numeric value(s): "
+                    + ', '.join(f"'{t}'" for t in bad_tokens)
+                )
+                continue  # skip column-count check for malformed rows
+            # Check column count
+            if len(tokens) != n_regressors:
+                errors.append(
+                    f"  {mtx_name}:{lineno}: expected {n_regressors} column(s) "
+                    f"({design.upper()} with {n_classes} class(es) and {n_variables} "
+                    f"variable(s)), got {len(tokens)}"
+                )
+
+    if errors:
+        raise ValueError(
+            f"Contrast matrix validation failed "
+            f"({n_regressors} column(s) required per row, {design.upper()} design):\n"
+            + "\n".join(errors)
+        )
+
+
+# ---------------------------------------------------------------------------
 # Main analysis steps
 # ---------------------------------------------------------------------------
 
@@ -278,6 +397,12 @@ def run_analysis(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     # --- FSGD ---
     fsgd_path = resolve_fsgd(args, output_dir, logger)
+
+    # --- Validate contrast matrices against FSGD design (hard fail before any analysis) ---
+    validate_contrast_matrices(args.contrast_matrix_path, fsgd_path, args.design, logger)
+    logger.info(
+        '[VALIDATE] Contrast matrices OK (%d file(s) checked)', len(args.contrast_matrix_path)
+    )
 
     # --- Per-hemisphere: concat → smooth → GLM ---
     for hemi in HEMISPHERES:
