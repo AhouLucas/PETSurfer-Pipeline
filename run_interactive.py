@@ -7,13 +7,14 @@ Usage:
 """
 
 import argparse
-import glob
 import logging
 import os
-import readline
 import subprocess
 import sys
 from pathlib import Path
+
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.completion import PathCompleter
 
 # Allow imports from src/
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
@@ -21,7 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
 
 console = Console()
 
@@ -32,55 +32,64 @@ DEFAULT_DATA_TEMPLATE = 'TAU_%d_%s'
 
 
 # ---------------------------------------------------------------------------
-# Input helpers
+# Input helpers — all use prompt_toolkit so backspace/Ctrl+C behave correctly
 # ---------------------------------------------------------------------------
-
-def _path_completer(text: str, state: int) -> str | None:
-    """readline completer that expands filesystem paths including directories."""
-    pattern = os.path.expanduser(text) + '*'
-    matches = glob.glob(pattern)
-    # Append '/' to directories so the user can keep tabbing into them
-    matches = [m + '/' if os.path.isdir(m) else m for m in matches]
-    return matches[state] if state < len(matches) else None
-
 
 def ask_path(prompt_text: str, must_exist: bool = True, is_file: bool = True,
              default: str | None = None) -> str:
-    """Ask for a filesystem path with tab-completion; re-prompt if the path doesn't exist.
+    """Ask for a filesystem path with tab-completion; re-prompt if it doesn't exist."""
+    completer = PathCompleter(expanduser=True)
+    default_hint = f" (default: {default})" if default else ""
 
-    Relative paths are resolved against the current working directory.
-    """
-    readline.set_completer(_path_completer)
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind('tab: complete')
+    while True:
+        value = pt_prompt(f"{prompt_text}{default_hint}: ", completer=completer)
+        if not value:
+            if default:
+                value = default
+            else:
+                console.print("[red]Please enter a path.[/red]")
+                continue
+        value = str(Path(value).resolve())
+        if must_exist:
+            check = os.path.isfile(value) if is_file else os.path.isdir(value)
+            if not check:
+                kind = "file" if is_file else "directory"
+                console.print(f"[red]That {kind} doesn't exist — please try again.[/red]")
+                continue
+        return value
 
-    try:
-        while True:
-            # Print the Rich-styled prompt manually; use plain input() so readline works
-            default_hint = f" [dim](default: {default})[/dim]" if default else ""
-            console.print(f"{prompt_text}{default_hint}: ", end="")
-            try:
-                value = input()
-            except EOFError:
-                value = ""
-            if not value:
-                if default:
-                    value = default
-                else:
-                    console.print("[red]Please enter a path.[/red]")
-                    continue
-            value = str(Path(value).resolve())
-            if must_exist:
-                check = os.path.isfile(value) if is_file else os.path.isdir(value)
-                if not check:
-                    kind = "file" if is_file else "directory"
-                    console.print(f"[red]That {kind} doesn't exist — please try again.[/red]")
-                    continue
+
+def ask_confirm(prompt_text: str, default: bool = True) -> bool:
+    """Ask a yes/no question; returns True for yes, False for no."""
+    hint = "[Y/n]" if default else "[y/N]"
+    while True:
+        value = pt_prompt(f"{prompt_text} {hint}: ").strip().lower()
+        if not value:
+            return default
+        if value in ('y', 'yes'):
+            return True
+        if value in ('n', 'no'):
+            return False
+        console.print("[red]Please enter y or n.[/red]")
+
+
+def ask_choice(prompt_text: str, choices: list[str], default: str | None = None) -> str:
+    """Ask the user to pick one of several choices."""
+    hint = f"[{'/'.join(choices)}]"
+    while True:
+        value = pt_prompt(f"{prompt_text} {hint}: ").strip().lower()
+        if not value and default is not None:
+            return default
+        if value in choices:
             return value
-    finally:
-        # Restore readline to default so it doesn't interfere with Rich prompts
-        readline.set_completer(None)
-        readline.parse_and_bind('tab: self-insert')
+        console.print(f"[red]Please enter one of: {', '.join(choices)}[/red]")
+
+
+def ask_text(prompt_text: str, default: str = "") -> str:
+    """Ask for a free-text value with an optional default."""
+    default_hint = f" (default: {default})" if default else " (or press Enter to skip)"
+    value = pt_prompt(f"{prompt_text}{default_hint}: ").strip()
+    return value or default
 
 
 def _clear_logger(name: str) -> None:
@@ -114,7 +123,7 @@ def preprocessing_flow() -> None:
         must_exist=True, is_file=False,
         default=DEFAULT_DATA_DIR,
     )
-    force = Confirm.ask("Force recompute even if output files already exist?", default=False)
+    force = ask_confirm("Force recompute even if output files already exist?", default=False)
 
     summary = (
         f"[bold]Patient list:[/bold]        {excel_path}\n"
@@ -124,7 +133,7 @@ def preprocessing_flow() -> None:
     )
     console.print(Panel(summary, title="[bold green]Ready to preprocess[/bold green]", box=box.ROUNDED))
 
-    if not Confirm.ask("Proceed?", default=True):
+    if not ask_confirm("Proceed?", default=True):
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
@@ -218,33 +227,33 @@ def analysis_flow() -> None:
         must_exist=True, is_file=False,
         default=DEFAULT_SUBJECTS_DIR,
     )
-    fwhm_str = Prompt.ask("Surface smoothing kernel size (mm)", default="5")
+    fwhm_str = ask_text("Surface smoothing kernel size (mm)", default="5")
 
     # Advanced settings
     design = 'dods'
     mean_center = False
     default_var: str | None = None
 
-    if Confirm.ask("\nConfigure advanced settings? (GLM design, mean-centering, default variable)", default=False):
+    if ask_confirm("\nConfigure advanced settings? (GLM design, mean-centering, default variable)", default=False):
         console.print(
             "\n[bold]Design type[/bold]\n"
             "  [cyan]dods[/cyan]  Each group gets its own slope — more flexible, recommended when unsure.\n"
             "  [cyan]doss[/cyan]  Groups share a common slope — simpler, fewer parameters.\n"
         )
-        design = Prompt.ask("Design type", choices=['dods', 'doss'], default='dods')
+        design = ask_choice("Design type", choices=['dods', 'doss'], default='dods')
 
         console.print(
             "\n[bold]Mean-centering[/bold]\n"
             "  Subtracts the group mean from continuous variables (e.g. age, MMSE).\n"
             "  Makes the intercept more interpretable. Usually recommended.\n"
         )
-        mean_center = Confirm.ask("Mean-center continuous variables?", default=False)
+        mean_center = ask_confirm("Mean-center continuous variables?", default=False)
 
         console.print(
             "\n[bold]Default variable[/bold]\n"
-            "  Which continuous variable freeview highlights by default. Leave blank to skip.\n"
+            "  Which continuous variable freeview highlights by default.\n"
         )
-        dv = Prompt.ask("Default variable name (or press Enter to skip)", default="")
+        dv = ask_text("Default variable name")
         default_var = dv or None
 
     summary = (
@@ -257,7 +266,7 @@ def analysis_flow() -> None:
     )
     console.print(Panel(summary, title="[bold green]Ready to run analysis[/bold green]", box=box.ROUNDED))
 
-    if not Confirm.ask("Proceed?", default=True):
+    if not ask_confirm("Proceed?", default=True):
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
@@ -321,27 +330,24 @@ def visualize_flow() -> None:
         must_exist=True, is_file=False,
     )
     subjects_dir = ask_path(
-        "Subjects directory (must contain an [italic]fsaverage/[/italic] folder)",
+        "Subjects directory (must contain an fsaverage/ folder)",
         must_exist=True, is_file=False,
         default=DEFAULT_SUBJECTS_DIR,
     )
 
-    hemi_choice = Prompt.ask(
+    hemi_choice = ask_choice(
         "Which hemisphere to display?",
         choices=['both', 'lh', 'rh'],
         default='both',
     )
     hemi: str | None = None if hemi_choice == 'both' else hemi_choice
 
-    overlay_threshold = Prompt.ask(
+    overlay_threshold = ask_text(
         "Overlay threshold MIN,MAX  (values below MIN are hidden; above MAX are fully colored)",
         default='2,5',
     )
 
-    contrast_input = Prompt.ask(
-        "Single contrast to show — leave blank to show all contrasts",
-        default="",
-    )
+    contrast_input = ask_text("Single contrast to show")
     contrast: str | None = contrast_input or None
 
     summary = (
@@ -353,7 +359,7 @@ def visualize_flow() -> None:
     )
     console.print(Panel(summary, title="[bold green]Ready to visualize[/bold green]", box=box.ROUNDED))
 
-    if not Confirm.ask("Open freeview?", default=True):
+    if not ask_confirm("Open freeview?", default=True):
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
@@ -370,7 +376,7 @@ def visualize_flow() -> None:
             if not os.path.exists(surf_path):
                 console.print(Panel(
                     f"[red]Surface file not found:[/red] {surf_path}\n\n"
-                    "Make sure [italic]subjects_dir[/italic] contains an [italic]fsaverage/[/italic] folder.",
+                    "Make sure subjects_dir contains an fsaverage/ folder.",
                     title="[bold red]Error[/bold red]", box=box.ROUNDED,
                 ))
                 return
@@ -400,7 +406,8 @@ def main() -> None:
     console.print(Panel(
         "[bold]Welcome to the PETSurfer Pipeline[/bold]\n\n"
         "This tool guides you step by step through the tau PET analysis pipeline.\n"
-        "Run the steps in order: [cyan]Preprocess[/cyan] → [cyan]Analyse[/cyan] → [cyan]Visualize[/cyan].",
+        "Run the steps in order: [cyan]Preprocess[/cyan] → [cyan]Analyse[/cyan] → [cyan]Visualize[/cyan].\n\n"
+        "[dim]Press Ctrl+C at any time to quit.[/dim]",
         title="PETSurfer",
         box=box.DOUBLE_EDGE,
         padding=(1, 4),
@@ -411,7 +418,7 @@ def main() -> None:
         for key, label, _ in MENU:
             console.print(f"  [bold cyan]{key}[/bold cyan]  {label}")
 
-        choice = Prompt.ask("\nEnter your choice", choices=[k for k, _, _ in MENU])
+        choice = ask_choice("\nEnter your choice", choices=[k for k, _, _ in MENU])
 
         if choice == 'q':
             console.print("\nGoodbye!")
@@ -423,4 +430,8 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Interrupted. Goodbye![/yellow]")
+        sys.exit(0)
