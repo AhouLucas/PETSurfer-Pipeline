@@ -10,16 +10,23 @@ Projects PET data onto the fsaverage surface for each patient and hemisphere.
 import argparse
 import logging
 import os
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from utils.config import PipelineConfig, add_common_args, build_config
-from steps.gtmpvc import GTMPVC_OUTPUT_FILES
+from utils.config import (
+    GTMPVC_OUTPUT_DIRNAME,
+    GTMPVC_OUTPUT_FILES,
+    HEMISPHERES,
+    VOL2SURF_FILENAME,
+    PipelineConfig,
+    add_common_args,
+    build_config,
+)
+from utils.utils import run_command
 
 
-def _run_vol2surf_patient(
+def run_vol2surf_patient(
     config: PipelineConfig,
     patient_id: int,
     timestamp: str,
@@ -29,7 +36,7 @@ def _run_vol2surf_patient(
     label = f'patient {patient_id} / {timestamp}'
     subject_dir = config.subject_path(patient_id, timestamp)
 
-    gtmpvc_dir = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
+    gtmpvc_dir = os.path.join(subject_dir, GTMPVC_OUTPUT_DIRNAME)
     pet_path = os.path.join(gtmpvc_dir, 'input.rescaled.nii.gz')
     reg_path = os.path.join(gtmpvc_dir, 'aux/bbpet2anat.lta')
 
@@ -46,15 +53,15 @@ def _run_vol2surf_patient(
         return False
 
     success = True
-    for hemi in ('lh', 'rh'):
-        output_path = os.path.join(subject_dir, 'mri', f'{hemi}.pet.fsaverage.sm00.nii.gz')
+    for hemi in HEMISPHERES:
+        output_path = os.path.join(subject_dir, 'mri', VOL2SURF_FILENAME.format(hemi=hemi))
 
         if not config.force and os.path.exists(output_path):
             logger.info('[SKIPPED] vol2surf %s — %s — output already present', hemi, label)
             continue
 
         logger.info('[RUNNING] vol2surf %s — %s', hemi, label)
-        result = subprocess.run([
+        returncode = run_command([
             'mri_vol2surf',
             '--mov',        pet_path,
             '--reg',        reg_path,
@@ -63,12 +70,11 @@ def _run_vol2surf_patient(
             '--o',          output_path,
             '--cortex',
             '--trgsubject', 'fsaverage'
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        logger.debug('[OUTPUT] mri_vol2surf %s %s stdout:\n%s\nstderr:\n%s', hemi, label, result.stdout, result.stderr)
-        if result.returncode != 0:
+        ], f'mri_vol2surf {hemi} {label}', logger)
+        if returncode != 0:
             logger.warning(
                 '[FAILED] vol2surf %s — %s — exit code %d. See the log file for details.',
-                hemi, label, result.returncode,
+                hemi, label, returncode,
             )
             success = False
 
@@ -80,7 +86,7 @@ def run_vol2surf(config: PipelineConfig, logger: logging.Logger | None = None) -
         logger = logging.getLogger(__name__)
 
     for patient_id, timestamp in config.patients:
-        _run_vol2surf_patient(config, patient_id, timestamp, logger)
+        run_vol2surf_patient(config, patient_id, timestamp, logger)
 
 
 if __name__ == '__main__':

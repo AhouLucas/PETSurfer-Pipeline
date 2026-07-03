@@ -12,29 +12,22 @@ the subject directory.
 import argparse
 import logging
 import os
-import subprocess
 import sys
 
 # Allow running as a script from the src/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from utils.config import PipelineConfig, add_common_args, build_config
-
-# Files that must exist inside the gtmpvc output directory before the step is
-# considered complete (used both for "already done" detection and as the
-# required inputs for the surface_analysis step).
-GTMPVC_OUTPUT_FILES = [
-    'input.rescaled.nii.gz',
-    'aux/bbpet2anat.lta',
-]
-
-
-def _indent(text: str, prefix: str = '    ') -> str:
-    """Indent each non-empty line of text for readable log embedding."""
-    return '\n'.join(prefix + line for line in text.splitlines() if line.strip())
+from utils.config import (
+    GTMPVC_OUTPUT_DIRNAME,
+    GTMPVC_OUTPUT_FILES,
+    PipelineConfig,
+    add_common_args,
+    build_config,
+)
+from utils.utils import run_command
 
 
-def _run_gtmpvc_patient(
+def run_gtmpvc_patient(
     config: PipelineConfig,
     patient_id: int,
     timestamp: str,
@@ -45,7 +38,7 @@ def _run_gtmpvc_patient(
     subject_dir = config.subject_path(patient_id, timestamp)
     data_dir = config.data_path(patient_id, timestamp)
 
-    output_dir = os.path.join(subject_dir, 'mri/gtmpvc.no.tfe.cerebellum.cortex.output')
+    output_dir = os.path.join(subject_dir, GTMPVC_OUTPUT_DIRNAME)
 
     output_files = [os.path.join(output_dir, f) for f in GTMPVC_OUTPUT_FILES]
     if not config.force and all(os.path.exists(p) for p in output_files):
@@ -65,7 +58,7 @@ def _run_gtmpvc_patient(
         return False
 
     logger.info('[RUNNING] gtmpvc — %s', label)
-    result = subprocess.run([
+    returncode = run_command([
         'mri_gtmpvc',
         '--i',             pet_path,
         '--reg',           reg_path,
@@ -76,12 +69,11 @@ def _run_gtmpvc_patient(
         '--rescale',       '8', '47',
         '--save-input',
         '--o',             output_dir
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    logger.debug('[OUTPUT] mri_gtmpvc %s stdout:\n%s\nstderr:\n%s', label, result.stdout, result.stderr)
-    if result.returncode != 0:
+    ], f'mri_gtmpvc {label}', logger)
+    if returncode != 0:
         logger.warning(
             '[FAILED] gtmpvc — %s — exit code %d. See the log file for details.',
-            label, result.returncode,
+            label, returncode,
         )
         return False
 
@@ -93,7 +85,7 @@ def run_gtmpvc(config: PipelineConfig, logger: logging.Logger | None = None) -> 
         logger = logging.getLogger(__name__)
 
     for patient_id, timestamp in config.patients:
-        _run_gtmpvc_patient(config, patient_id, timestamp, logger)
+        run_gtmpvc_patient(config, patient_id, timestamp, logger)
 
 
 if __name__ == '__main__':

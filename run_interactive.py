@@ -7,7 +7,6 @@ Usage:
 """
 
 import argparse
-import logging
 import os
 import subprocess
 import sys
@@ -23,12 +22,11 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 
+from utils.config import DEFAULT_DATA_DIR, DEFAULT_SUBJECTS_DIR
+
 console = Console()
 
-DEFAULT_SUBJECTS_DIR = '/media/vmalotaux/data/subjects-v.7.2.0'
-DEFAULT_DATA_DIR = '/media/vmalotaux/data/Yasmine'
 DEFAULT_SUBJECTS_TEMPLATE = 'YASMINE_TAU_%d_%s'
-DEFAULT_DATA_TEMPLATE = 'TAU_%d_%s'
 
 
 # ---------------------------------------------------------------------------
@@ -92,12 +90,6 @@ def ask_text(prompt_text: str, default: str = "") -> str:
     return value or default
 
 
-def _clear_logger(name: str) -> None:
-    """Remove all handlers from a named logger so re-runs don't stack them."""
-    lgr = logging.getLogger(name)
-    lgr.handlers.clear()
-
-
 # ---------------------------------------------------------------------------
 # Preprocessing flow
 # ---------------------------------------------------------------------------
@@ -138,25 +130,12 @@ def preprocessing_flow() -> None:
         return
 
     from utils.config import add_common_args, build_config
-    from utils.utils import make_formatter
-    from steps.gtmpvc import _run_gtmpvc_patient
-    from steps.vol2surf import _run_vol2surf_patient
-
-    _clear_logger('petsurfer')
-    logger = logging.getLogger('petsurfer')
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-    fmt = make_formatter()
+    from utils.utils import setup_logger
+    from steps.gtmpvc import run_gtmpvc_patient
+    from steps.vol2surf import run_vol2surf_patient
 
     log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'pipeline_rerun.log')
-    fh = logging.FileHandler(log_file, mode='a')
-    fh.setFormatter(fmt)
-    fh.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setFormatter(fmt)
-    ch.setLevel(logging.INFO)
-    logger.addHandler(fh)
-    logger.addHandler(ch)
+    logger = setup_logger('petsurfer', log_file, file_mode='a')
 
     parser = argparse.ArgumentParser()
     add_common_args(parser)
@@ -175,9 +154,9 @@ def preprocessing_flow() -> None:
 
     try:
         for patient_id, timestamp in config.patients:
-            ok = _run_gtmpvc_patient(config, patient_id, timestamp, logger)
+            ok = run_gtmpvc_patient(config, patient_id, timestamp, logger)
             if ok:
-                _run_vol2surf_patient(config, patient_id, timestamp, logger)
+                run_vol2surf_patient(config, patient_id, timestamp, logger)
             else:
                 logger.warning(
                     '[SKIPPED] vol2surf — patient %s / %s — gtmpvc did not succeed',
@@ -270,7 +249,7 @@ def analysis_flow() -> None:
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
-    from run_analysis import run_analysis, setup_logger as analysis_setup_logger
+    from run_analysis import run_analysis, setup_analysis_logger
 
     args = argparse.Namespace(
         analysis_dir=analysis_dir,
@@ -286,8 +265,7 @@ def analysis_flow() -> None:
         design=design,
     )
 
-    _clear_logger('run_analysis')
-    logger, log_path = analysis_setup_logger(analysis_dir)
+    logger, log_path = setup_analysis_logger(analysis_dir)
 
     try:
         run_analysis(args, logger)

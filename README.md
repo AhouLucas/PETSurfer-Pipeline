@@ -54,27 +54,29 @@ Here is a description of the different files and directories in this project and
 
 ```bash
 .
-├── README.md   # This document
-├── requirements.txt    # Python requirements
-├── scripts/            # Miscellaneous scripts
-│   ├── flag_warned_patients.py
-│   ├── match_tests_to_pet.py
-│   └── scan_pet_dirs.py
-└── src/                # Main python script
+├── README.md            # This document
+├── requirements.txt     # Python requirements
+├── run_interactive.py   # Guided interactive launcher for all pipeline steps
+├── scripts/             # Miscellaneous scripts
+│   ├── compare_nifti.py
+│   ├── flag_warned_patients.py
+│   ├── match_tests_to_pet.py
+│   └── scan_pet_dirs.py
+└── src/                 # Main python scripts
     ├── run_analysis.py
     ├── run_preprocessing.py
     ├── visualize_glmfit.py
-    ├── steps/          # PETSurfer steps for preprocessing
-    │   ├── gtmpvc.py
-    │   └── vol2surf.py
-    └── utils/          # Utils scripts
-        ├── compare_nifti.py
+    ├── steps/           # PETSurfer steps for preprocessing
+    │   ├── gtmpvc.py
+    │   └── vol2surf.py
+    └── utils/           # Utils scripts
         ├── config.py
         ├── excel_to_fsgd.py
         └── utils.py
 ```
 
-Among those files, you will be mainly interested in the one in the `src/` directory. Especially, you will be interested in:
+Besides the interactive launcher (`run_interactive.py`), which guides you through every step, you will be
+mainly interested in the scripts in the `src/` directory. Especially, you will be interested in:
 
 ### `src/run_preprocessing.py`
 
@@ -99,5 +101,3 @@ See the following sections for more details on the usage.
 Once the analysis was run, this script allows you to visualize the results using `freeview`.
 
 Again, more on the usage in the next sections.
-
-

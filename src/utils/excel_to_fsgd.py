@@ -41,10 +41,19 @@ See https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat for the FSGD specificat
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
-import pandas as pd
+# Allow running as a script from src/utils/ (so `utils.utils` resolves).
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    # When imported as part of the `utils` package (e.g. by run_analysis.py).
+    from utils.utils import load_included_rows
+except ModuleNotFoundError:
+    # When run standalone from src/utils/, utils.py is a sibling module.
+    from utils import load_included_rows
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -86,49 +95,19 @@ def build_subject_id(patient_id: int, timestamp: str, subjects_template: str) ->
 
 def read_excel(path: str, sheet_name: str | None = None) -> tuple[list[str], list[list]]:
     """
-    Read the Excel or ODS file and return (headers, rows).
+    Read the Excel or ODS file and return (headers, rows) for included rows only.
 
-    Each row is a list of cell values with length == len(headers).
-    Rows where the include flag (column 1) is 0 are dropped.
+    Thin wrapper over utils.load_included_rows: keeps rows where the include flag
+    (column 1) is 1, normalizes PatientID/Timestamp, and validates them (positive
+    integer PatientID, "T<number>" timestamp). Raises ValueError on any problem so
+    callers can report it and exit.
     """
-    import os
-    ext = os.path.splitext(path)[1].lower()
-    kwargs: dict = {'sheet_name': sheet_name or 0, 'header': 0}
-    if ext == '.ods':
-        kwargs['engine'] = 'odf'
-    elif ext not in ('.xlsx', '.xls'):
-        logger.error(
-            "Unsupported file format: '%s'. Expected an .xlsx or .ods file.",
-            os.path.basename(path),
-        )
-        sys.exit(1)
-    try:
-        df = pd.read_excel(path, **kwargs)
-    except ValueError as e:
-        logger.error("Sheet not found: %s", e)
-        sys.exit(1)
-
-    if df.empty:
-        logger.error("The spreadsheet must have at least a header row and one data row.")
-        sys.exit(1)
-
-    headers = [str(col).strip() for col in df.columns]
-
-    # Replace pandas NA with None for consistent downstream handling
-    df = df.where(df.notna(), other=None)
-
-    # Drop completely empty rows
-    df = df.dropna(how="all")
-
-    # Drop rows where the include flag (column 1) is 0
-    df = df[df.iloc[:, COL_INCLUDE].astype(str).str.strip() != "0"]
-
-    data_rows = df.values.tolist()
-
+    headers, data_rows = load_included_rows(path, sheet_name=sheet_name)
     if not data_rows:
-        logger.error("The spreadsheet must have at least a header row and one data row.")
-        sys.exit(1)
-
+        raise ValueError(
+            "No included rows found. Check that at least one row has the include "
+            "flag (column 1) set to 1."
+        )
     return headers, data_rows
 
 
@@ -180,86 +159,53 @@ def validate(
     continuous_cols: list[int],
     default_var: str | None,
     subjects_template: str,
-) -> bool:
+) -> None:
     """
-    Run validation checks.  Returns True if everything is fine, False (with
-    logged errors) otherwise.
+    Run FSGD-specific validation checks and raise ValueError (listing every
+    problem at once) if any fail.
+
+    PatientID and Timestamp validity are guaranteed by the shared loader
+    (utils.load_included_rows), so they are not re-checked here. This function
+    covers only what FSGD generation needs: complete column layout, complete
+    variable cells, and a well-formed set of classes/variables.
     """
-    ok = True
+    errors: list[str] = []
 
     # --- Minimum column count ---
     if len(headers) < 4:
-        logger.error(
+        raise ValueError(
             "The spreadsheet must have at least 4 columns "
             "(Include, PatientID, Timestamp, and at least one variable)."
         )
-        return False
 
     # --- No empty headers ---
     for i, h in enumerate(headers):
         if not h:
-            logger.error("Column %d has an empty header.", i + 1)
-            ok = False
+            errors.append(f"Column {i + 1} has an empty header.")
 
     # --- Duplicate headers ---
     seen_headers = set()
     for h in headers:
         if h in seen_headers:
-            logger.error("Duplicate column header: '%s'.", h)
-            ok = False
+            errors.append(f"Duplicate column header: '{h}'.")
         seen_headers.add(h)
 
-    # --- PatientID checks ---
-    patient_ids_with_ts = []
-    for row_idx, row in enumerate(data_rows, start=2):
-        pid = row[COL_PATIENT_ID]
-        if pid is None:
-            logger.error("Row %d: empty PatientID.", row_idx)
-            ok = False
-            continue
-        if not isinstance(pid, (int, float)) or (isinstance(pid, float) and pid != int(pid)):
-            logger.error("Row %d: PatientID '%s' is not an integer.", row_idx, pid)
-            ok = False
-            continue
-
-    # --- Timestamp checks ---
-    for row_idx, row in enumerate(data_rows, start=2):
-        ts = row[COL_TIMESTAMP]
-        if ts is None or str(ts).strip() == "":
-            logger.error("Row %d: empty Timestamp.", row_idx)
-            ok = False
-            continue
-        ts_str = str(ts).strip()
-        if " " in ts_str or "\t" in ts_str:
-            logger.error("Row %d: Timestamp '%s' contains whitespace.", row_idx, ts_str)
-            ok = False
-
     # --- Build full subject IDs and check for duplicates ---
+    # PatientID is an int and Timestamp a clean string (loader-guaranteed), so
+    # any whitespace in the generated ID can only come from --subjects-template.
     subject_ids = []
     for row_idx, row in enumerate(data_rows, start=2):
-        pid = row[COL_PATIENT_ID]
-        ts = row[COL_TIMESTAMP]
-        if pid is None or ts is None:
-            continue
-        try:
-            full_id = build_subject_id(int(pid), str(ts).strip(), subjects_template)
-        except (TypeError, ValueError) as e:
-            logger.error("Row %d: cannot build subject ID: %s", row_idx, e)
-            ok = False
-            continue
+        full_id = build_subject_id(int(row[COL_PATIENT_ID]), str(row[COL_TIMESTAMP]), subjects_template)
         if " " in full_id or "\t" in full_id:
-            logger.error(
-                "Row %d: generated SubjectID '%s' contains whitespace "
-                "(check --subjects-template).",
-                row_idx, full_id,
+            errors.append(
+                f"Row {row_idx}: generated SubjectID '{full_id}' contains whitespace "
+                "(check --subjects-template)."
             )
-            ok = False
         subject_ids.append(full_id)
 
     if len(subject_ids) != len(set(subject_ids)):
         dupes = [s for s in set(subject_ids) if subject_ids.count(s) > 1]
-        logger.error("Duplicate generated SubjectIDs: %s", dupes)
-        ok = False
+        errors.append(f"Duplicate generated SubjectIDs: {dupes}")
 
     # --- No empty cells in discrete columns ---
     missing_rows: set[int] = set()
@@ -267,8 +213,7 @@ def validate(
         col_name = headers[col_idx]
         for row_idx, row in enumerate(data_rows, start=2):
             if row[col_idx] is None or str(row[col_idx]).strip() == "":
-                logger.error("Row %d, column '%s': empty cell.", row_idx, col_name)
-                ok = False
+                errors.append(f"Row {row_idx}, column '{col_name}': empty cell.")
                 missing_rows.add(row_idx)
 
     # --- No empty cells in continuous columns ---
@@ -277,45 +222,37 @@ def validate(
         for row_idx, row in enumerate(data_rows, start=2):
             val = row[col_idx]
             if val is None or str(val).strip() == "":
-                logger.error(
-                    "Row %d, column '%s': empty cell (FSGD requires complete data).",
-                    row_idx, col_name,
+                errors.append(
+                    f"Row {row_idx}, column '{col_name}': empty cell (FSGD requires complete data)."
                 )
-                ok = False
                 missing_rows.add(row_idx)
             elif not is_numeric(val):
-                logger.error(
-                    "Row %d, column '%s': non-numeric value '%s' in continuous column.",
-                    row_idx, col_name, val,
+                errors.append(
+                    f"Row {row_idx}, column '{col_name}': non-numeric value '{val}' in continuous column."
                 )
-                ok = False
                 missing_rows.add(row_idx)
 
     if missing_rows:
         sorted_rows = sorted(missing_rows)
-        logger.error(
-            "Rows with missing or invalid variable data: %s. "
+        errors.append(
+            f"Rows with missing or invalid variable data: {sorted_rows}. "
             "For each row, either fill in the missing values or set the include "
-            "flag (column 1) to 0 to exclude that patient from the analysis.",
-            sorted_rows,
+            "flag (column 1) to 0 to exclude that patient from the analysis."
         )
 
     # --- DefaultVariable must be among continuous variables ---
     if default_var:
         continuous_names = [headers[i] for i in continuous_cols]
         if default_var not in continuous_names:
-            logger.error(
-                "--default-var '%s' is not among the continuous variables: %s",
-                default_var,
-                continuous_names,
+            errors.append(
+                f"--default-var '{default_var}' is not among the continuous "
+                f"variables: {continuous_names}"
             )
-            ok = False
 
     # --- Variable name collision check ---
     variable_names = [headers[i] for i in continuous_cols]
     if len(variable_names) != len(set(variable_names)):
-        logger.error("Duplicate variable names detected.")
-        ok = False
+        errors.append("Duplicate variable names detected.")
 
     # --- Warn if no discrete columns (single-group design) ---
     if not discrete_cols:
@@ -325,7 +262,11 @@ def validate(
             "one column (3+) contains text values."
         )
 
-    return ok
+    if errors:
+        raise ValueError(
+            "Spreadsheet validation failed — fix the following and retry:\n  "
+            + "\n  ".join(errors)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -482,7 +423,11 @@ def main() -> None:
     logger.info("Using subjects template: '%s'", subjects_template)
 
     # --- Read ---
-    headers, data_rows = read_excel(str(input_path), sheet_name=args.sheet)
+    try:
+        headers, data_rows = read_excel(str(input_path), sheet_name=args.sheet)
+    except (ValueError, FileNotFoundError) as e:
+        logger.error("%s", e)
+        sys.exit(1)
     logger.info("Read %d rows from '%s'.", len(data_rows), input_path.name)
     logger.info("Columns: %s", headers)
 
@@ -502,8 +447,10 @@ def main() -> None:
         logger.warning("No continuous variables detected (columns 3+).")
 
     # --- Validate ---
-    if not validate(headers, data_rows, discrete_cols, continuous_cols, args.default_var, subjects_template):
-        logger.error("Validation failed. Fix the errors above and retry.")
+    try:
+        validate(headers, data_rows, discrete_cols, continuous_cols, args.default_var, subjects_template)
+    except ValueError as e:
+        logger.error("%s", e)
         sys.exit(1)
 
     # --- Generate ---

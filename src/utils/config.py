@@ -9,6 +9,29 @@ from dataclasses import dataclass, field
 
 from utils.utils import read_patients_from_excel
 
+# ---------------------------------------------------------------------------
+# Shared pipeline constants
+# ---------------------------------------------------------------------------
+
+# Default data locations (overridable via CLI flags).
+DEFAULT_SUBJECTS_DIR = '/media/vmalotaux/data/subjects-v.7.2.0'
+DEFAULT_DATA_DIR = '/media/vmalotaux/data/Yasmine'
+
+# Hemispheres processed by the surface steps.
+HEMISPHERES = ('lh', 'rh')
+
+# gtmpvc output directory (relative to a subject dir) and the files that must
+# exist inside it before the step counts as complete. These files are also the
+# required inputs for the vol2surf step.
+GTMPVC_OUTPUT_DIRNAME = 'mri/gtmpvc.no.tfe.cerebellum.cortex.output'
+GTMPVC_OUTPUT_FILES = [
+    'input.rescaled.nii.gz',
+    'aux/bbpet2anat.lta',
+]
+
+# vol2surf output filename pattern, written into each subject's mri/ directory.
+VOL2SURF_FILENAME = '{hemi}.pet.fsaverage.sm00.nii.gz'
+
 
 @dataclass
 class PipelineConfig:
@@ -50,12 +73,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         help='Path to the Excel spreadsheet with patient data.'
     )
     parser.add_argument(
-        '--subjects-dir', default='/media/vmalotaux/data/subjects-v.7.2.0',
-        help='Directory containing FreeSurfer subject folders. Default: /media/vmalotaux/data/subjects-v.7.2.0'
+        '--subjects-dir', default=DEFAULT_SUBJECTS_DIR,
+        help=f'Directory containing FreeSurfer subject folders. Default: {DEFAULT_SUBJECTS_DIR}'
     )
     parser.add_argument(
-        '--data-dir', default='/media/vmalotaux/data/Yasmine',
-        help='Directory containing raw PET image folders. Default: /media/vmalotaux/data/Yasmine'
+        '--data-dir', default=DEFAULT_DATA_DIR,
+        help=f'Directory containing raw PET image folders. Default: {DEFAULT_DATA_DIR}'
     )
     parser.add_argument(
         '--fsgd-path', default=None,

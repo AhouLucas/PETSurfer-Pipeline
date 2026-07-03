@@ -14,11 +14,18 @@ Use --contrast to load a single contrast instead of all of them.
 
 import argparse
 import glob
+import logging
 import os
 import subprocess
 import sys
 
-HEMISPHERES = ('lh', 'rh')
+# Allow imports from src/
+sys.path.insert(0, os.path.dirname(__file__))
+
+from utils.config import DEFAULT_SUBJECTS_DIR, HEMISPHERES
+from utils.utils import setup_logger
+
+logger = logging.getLogger(__name__)
 
 
 def find_glmfit_dir(analysis_dir: str, hemi: str) -> str:
@@ -27,19 +34,19 @@ def find_glmfit_dir(analysis_dir: str, hemi: str) -> str:
     matches = sorted(glob.glob(pattern))
 
     if len(matches) == 0:
-        print(
-            f'ERROR: no glmfit directory found for hemisphere "{hemi}" in {analysis_dir}\n'
-            f'Expected a directory matching: all.{hemi}.pet.fsaverage.sm*.glmfit',
-            file=sys.stderr,
+        logger.error(
+            'no glmfit directory found for hemisphere "%s" in %s\n'
+            'Expected a directory matching: all.%s.pet.fsaverage.sm*.glmfit',
+            hemi, analysis_dir, hemi,
         )
         sys.exit(1)
     if len(matches) > 1:
         names = '\n  '.join(matches)
-        print(
-            f'ERROR: multiple glmfit directories found for hemisphere "{hemi}" in {analysis_dir}:\n'
-            f'  {names}\n'
+        logger.error(
+            'multiple glmfit directories found for hemisphere "%s" in %s:\n'
+            '  %s\n'
             'Use --glmfit-dir to specify which one to use.',
-            file=sys.stderr,
+            hemi, analysis_dir, names,
         )
         sys.exit(1)
 
@@ -54,10 +61,10 @@ def find_contrast_dirs(glmfit_dir: str, contrast: str | None) -> list[str]:
     if contrast is not None:
         path = os.path.join(glmfit_dir, contrast)
         if not os.path.isdir(path):
-            print(f'ERROR: contrast directory not found: {path}', file=sys.stderr)
+            logger.error('contrast directory not found: %s', path)
             sys.exit(1)
         if not os.path.exists(os.path.join(path, 'sig.mgh')):
-            print(f'ERROR: sig.mgh not found in {path}', file=sys.stderr)
+            logger.error('sig.mgh not found in %s', path)
             sys.exit(1)
         return [path]
 
@@ -67,14 +74,11 @@ def find_contrast_dirs(glmfit_dir: str, contrast: str | None) -> list[str]:
             if e.is_dir() and os.path.exists(os.path.join(e.path, 'sig.mgh'))
         )
     except FileNotFoundError:
-        print(f'ERROR: glmfit directory not found: {glmfit_dir}', file=sys.stderr)
+        logger.error('glmfit directory not found: %s', glmfit_dir)
         sys.exit(1)
 
     if len(entries) == 0:
-        print(
-            f'ERROR: no contrast subfolder containing sig.mgh found in {glmfit_dir}',
-            file=sys.stderr,
-        )
+        logger.error('no contrast subfolder containing sig.mgh found in %s', glmfit_dir)
         sys.exit(1)
 
     return entries
@@ -128,8 +132,8 @@ def main() -> None:
         help='Name of a single contrast subfolder to visualize. Loads all contrasts if omitted.',
     )
     parser.add_argument(
-        '--subjects-dir', default='/media/vmalotaux/data/subjects-v.7.2.0',
-        help='Directory containing the fsaverage subject folder. Default: /media/vmalotaux/data/subjects-v.7.2.0',
+        '--subjects-dir', default=DEFAULT_SUBJECTS_DIR,
+        help=f'Directory containing the fsaverage subject folder. Default: {DEFAULT_SUBJECTS_DIR}',
     )
     parser.add_argument(
         '--hemi', choices=['lh', 'rh'], default=None,
@@ -142,8 +146,11 @@ def main() -> None:
     args = parser.parse_args()
 
     if not os.path.isdir(args.analysis_dir):
-        print(f'ERROR: analysis directory not found: {args.analysis_dir}', file=sys.stderr)
+        # Logger not yet attached to the analysis dir; lastResort routes this to stderr.
+        logger.error('analysis directory not found: %s', args.analysis_dir)
         sys.exit(1)
+
+    setup_logger(__name__, os.path.join(args.analysis_dir, 'visualize.log'), file_mode='a')
 
     hemis = [args.hemi] if args.hemi else list(HEMISPHERES)
 
@@ -155,13 +162,13 @@ def main() -> None:
 
         surf_path = os.path.join(args.subjects_dir, 'fsaverage', 'surf', f'{hemi}.inflated')
         if not os.path.exists(surf_path):
-            print(f'ERROR: surface file not found: {surf_path}', file=sys.stderr)
+            logger.error('surface file not found: %s', surf_path)
             sys.exit(1)
 
         f_args += build_f_args(surf_path, contrast_dirs, args.overlay_threshold, hemi)
 
     cmd = ['freeview'] + f_args + ['-viewport', '3d']
-    print('Running:', ' '.join(cmd))
+    logger.info('Running: %s', ' '.join(cmd))
     subprocess.run(cmd, check=True)
 
 
