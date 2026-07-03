@@ -94,6 +94,11 @@ def ask_text(prompt_text: str, default: str = "") -> str:
     return value or default
 
 
+def _error(msg: str) -> None:
+    """Print a Rich error panel and return."""
+    console.print(Panel(f"[red]{msg}[/red]", title="[bold red]Error[/bold red]", box=box.ROUNDED))
+
+
 class _ErrorCapture(logging.Handler):
     """Attaches to a logger to capture the most recent ERROR-level message."""
     def __init__(self) -> None:
@@ -115,10 +120,16 @@ def preprocessing_flow() -> None:
         "then surface projection ([italic]mri_vol2surf[/italic]) for each patient.\n"
     )
 
-    excel_path = ask_path(
-        "Path to the patient list Excel file [.xlsx]",
-        must_exist=True, is_file=True,
-    )
+    while True:
+        excel_path = ask_path(
+            "Path to the patient list Excel file [.xlsx/.xls/.ods]",
+            must_exist=True, is_file=True,
+        )
+        if Path(excel_path).suffix.lower() not in ('.xlsx', '.xls', '.ods'):
+            _error(f"{Path(excel_path).name} is not a recognised spreadsheet format (.xlsx, .xls, .ods).")
+            continue
+        break
+
     subjects_dir = ask_path(
         "Subjects directory (root folder containing FreeSurfer subject folders)",
         must_exist=True, is_file=False,
@@ -205,21 +216,33 @@ def analysis_flow() -> None:
         "and contrast matrices [bold](.mtx)[/bold].\n"
     )
 
-    analysis_dir = ask_path(
-        "Path to your analysis folder",
-        must_exist=True, is_file=False,
-    )
+    while True:
+        analysis_dir = ask_path(
+            "Path to your analysis folder",
+            must_exist=True, is_file=False,
+        )
+        xlsx = (sorted(Path(analysis_dir).glob('*.xlsx'))
+                + sorted(Path(analysis_dir).glob('*.xls'))
+                + sorted(Path(analysis_dir).glob('*.ods')))
+        mtx = sorted(Path(analysis_dir).glob('*.mtx'))
 
-    # Auto-discovery preview
-    xlsx = (sorted(Path(analysis_dir).glob('*.xlsx'))
-            + sorted(Path(analysis_dir).glob('*.xls'))
-            + sorted(Path(analysis_dir).glob('*.ods')))
-    mtx = sorted(Path(analysis_dir).glob('*.mtx'))
-    if xlsx:
-        console.print(f"  [dim]Found spreadsheet:  {xlsx[0].name}[/dim]")
-    if mtx:
+        errors = []
+        if len(xlsx) == 0:
+            errors.append("No spreadsheet (.xlsx / .xls / .ods) found in that folder.")
+        elif len(xlsx) > 1:
+            names = ', '.join(f.name for f in xlsx)
+            errors.append(f"Multiple spreadsheets found: {names}\nKeep only one in the folder.")
+        if len(mtx) == 0:
+            errors.append("No contrast matrix (.mtx) found in that folder.")
+
+        if errors:
+            _error('\n'.join(errors))
+            continue
+
+        console.print(f"  [dim]Found spreadsheet:    {xlsx[0].name}[/dim]")
         console.print(f"  [dim]Found contrast file(s): {', '.join(f.name for f in mtx)}[/dim]")
-    console.print()
+        console.print()
+        break
 
     subjects_dir = ask_path(
         "Subjects directory (root folder containing FreeSurfer subject folders)",
@@ -327,15 +350,31 @@ def visualize_flow() -> None:
         "This opens your GLM significance maps in freeview overlaid on the brain surface.\n"
     )
 
-    analysis_dir = ask_path(
-        "Path to your analysis folder (same folder used for group analysis)",
-        must_exist=True, is_file=False,
-    )
-    subjects_dir = ask_path(
-        "Subjects directory (must contain an fsaverage/ folder)",
-        must_exist=True, is_file=False,
-        default=DEFAULT_SUBJECTS_DIR,
-    )
+    import glob as _glob
+    while True:
+        analysis_dir = ask_path(
+            "Path to your analysis folder (same folder used for group analysis)",
+            must_exist=True, is_file=False,
+        )
+        glmfit_dirs = _glob.glob(os.path.join(analysis_dir, 'all.*.glmfit'))
+        if not glmfit_dirs:
+            _error(
+                f"No glmfit output found in {analysis_dir}.\n"
+                "Run the group analysis step first to generate results."
+            )
+            continue
+        break
+
+    while True:
+        subjects_dir = ask_path(
+            "Subjects directory (must contain an fsaverage/ folder)",
+            must_exist=True, is_file=False,
+            default=DEFAULT_SUBJECTS_DIR,
+        )
+        if not os.path.isdir(os.path.join(subjects_dir, 'fsaverage')):
+            _error(f"No fsaverage/ folder found inside {subjects_dir}.")
+            continue
+        break
 
     hemi_choice = ask_choice(
         "Which hemisphere to display?",
@@ -375,13 +414,6 @@ def visualize_flow() -> None:
             glmfit_dir = find_glmfit_dir(analysis_dir, h)
             contrast_dirs = find_contrast_dirs(glmfit_dir, contrast)
             surf_path = os.path.join(subjects_dir, 'fsaverage', 'surf', f'{h}.inflated')
-            if not os.path.exists(surf_path):
-                console.print(Panel(
-                    f"[red]Surface file not found:[/red] {surf_path}\n\n"
-                    "Make sure subjects_dir contains an fsaverage/ folder.",
-                    title="[bold red]Error[/bold red]", box=box.ROUNDED,
-                ))
-                return
             f_args += build_f_args(surf_path, contrast_dirs, overlay_threshold, h)
     except SystemExit:
         # find_glmfit_dir / find_contrast_dirs call sys.exit on error; message already printed
