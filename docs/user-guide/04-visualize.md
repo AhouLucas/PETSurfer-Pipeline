@@ -8,9 +8,6 @@ regions where the comparison is statistically strong.
 
 From the main menu, press **`3`**.
 
-!!! note "Screenshot needed"
-    *Figure: the "Visualize results" intro screen.*
-
 ![Visualize intro](../assets/screenshots/04-intro.png)
 
 | Prompt | What to enter |
@@ -21,15 +18,10 @@ From the main menu, press **`3`**.
 | **Overlay threshold MIN,MAX** | Two numbers, e.g. `2,5`. Values **below MIN** are hidden; values **above MAX** are shown in full colour. |
 | **Single contrast to show** | Leave blank to show **all** contrasts, or type one contrast name. |
 
-!!! note "Screenshot needed"
-    *Figure: the visualization prompts in the terminal.*
 
 ![Visualize prompts](../assets/screenshots/04-prompts.png)
 
 Confirm with `y` to open freeview.
-
-!!! note "Screenshot needed"
-    *Figure: the "Ready to visualize" summary panel.*
 
 ![Visualize summary](../assets/screenshots/04-summary.png)
 
@@ -37,10 +29,6 @@ Confirm with `y` to open freeview.
 
 freeview opens showing the inflated `fsaverage` brain with your results painted on
 top. Coloured regions are where the effect is strongest.
-
-!!! note "Screenshot needed"
-    *Figure: freeview showing a significance map on the inflated surface, with the
-    overlay layers panel on the left.*
 
 ![freeview result](../assets/screenshots/04-freeview.png)
 
@@ -51,6 +39,6 @@ top. Coloured regions are where the effect is strongest.
 
 !!! tip "The threshold controls what you see"
     If the whole surface looks coloured, raise MIN. If almost nothing shows, lower
-    it. You can simply re-run this step with different MIN,MAX values.
+    it. You can simply re-run this step with different MIN,MAX values. You can also set them directly in freeview in the "Configure" tab below the "Overlay". Note that you have to do it for each contrast if you go that way.
 
-[:octicons-arrow-right-24: See a full worked example](05-tutorial.md)
+[:octicons-arrow-right-24: Troubleshooting](05-troubleshooting.md)

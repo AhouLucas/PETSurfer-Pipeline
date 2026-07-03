@@ -19,7 +19,7 @@ usually why.
 | Message / symptom | What it means | What to do |
 |-------------------|---------------|------------|
 | *"That file/directory doesn't exist"* | The path you typed is wrong. | Retype it, using ++tab++ to auto-complete. |
-| *"…is not a recognised spreadsheet format"* | The patient list isn't `.xlsx`, `.xls`, or `.ods`. | Re-save it in a supported format. |
+| *"…is not a recognised spreadsheet format"* | The patient list isn't `.xlsx` or `.ods`. | Re-save it in a supported format. |
 | *"No spreadsheet found in that folder"* | The analysis folder has no patient list. | Put exactly one spreadsheet in the folder. |
 | *"Multiple spreadsheets found"* | More than one spreadsheet in the folder. | Keep only one; move or delete the others. |
 | *"No contrast matrix (.mtx) found"* | The analysis folder has no `.mtx`. | Add at least one contrast file. |
