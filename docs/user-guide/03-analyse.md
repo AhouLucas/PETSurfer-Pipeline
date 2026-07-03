@@ -11,9 +11,6 @@ patient list and contrast matrices.
 
 From the main menu, press **`2`**.
 
-!!! note "Screenshot needed"
-    *Figure: the "Run group analysis" intro screen.*
-
 ![Analysis intro](../assets/screenshots/03-intro.png)
 
 | Prompt | What to enter |
@@ -24,9 +21,6 @@ From the main menu, press **`2`**.
 
 When you enter the folder, the tool prints what it found, so you can confirm it
 picked up the right files:
-
-!!! note "Screenshot needed"
-    *Figure: the tool listing the spreadsheet and contrast file(s) it found.*
 
 ![Analysis found files](../assets/screenshots/03-found.png)
 
@@ -43,15 +37,9 @@ answer **`n`**. If you answer `y`, you can set:
 
 The tool explains each option on screen as it asks.
 
-!!! note "Screenshot needed"
-    *Figure: the advanced settings prompts (design, mean-centering, default variable).*
-
 ![Analysis advanced settings](../assets/screenshots/03-advanced.png)
 
 Finally, review the summary and confirm with `y`.
-
-!!! note "Screenshot needed"
-    *Figure: the "Ready to run analysis" summary panel.*
 
 ![Analysis summary](../assets/screenshots/03-summary.png)
 
