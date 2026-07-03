@@ -1,19 +1,25 @@
 # PETSurfer Pipeline
 
-This repository provides an automated CLI/TUI pipeline built around
-[PETSurfer](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer)
-(FreeSurfer's PET processing suite). It runs the pre-processing steps, the
-group-level statistical analysis, and the visualization of the results for
-**tau PET neuroimaging research on Alzheimer's disease biomarkers** (Braak
-staging across diagnostic groups) at IoNS.
+<p align="center">
+  <a href="https://petsurfer-pipeline.readthedocs.io">
+    <img src="https://img.shields.io/badge/docs-readthedocs-blue?logo=readthedocs&logoColor=white" alt="Documentation">
+  </a>
+  <a href="https://petsurfer-pipeline.readthedocs.io/en/latest/pdf/petsurfer-pipeline.pdf">
+    <img src="https://img.shields.io/badge/docs-PDF-red?logo=adobeacrobatreader&logoColor=white" alt="PDF">
+  </a>
+  <img src="https://img.shields.io/badge/python-3.x-blue?logo=python&logoColor=white" alt="Python 3">
+  <img src="https://img.shields.io/badge/FreeSurfer-PETSurfer-green" alt="PETSurfer">
+</p>
 
-The target users are researchers who are not necessarily developers. A guided
-interactive launcher (`run_interactive.py`) walks them through every step; the
-underlying command-line scripts remain available for automation and scripting.
+> Automated CLI/TUI pipeline for **tau PET neuroimaging research on
+> Alzheimer's disease biomarkers** (Braak staging across diagnostic groups)
+> at IoNS, built around [PETSurfer](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer).
 
-This document is aimed at people interested in the **code** as well as its
-usage: it explains the goal of the project, the pipeline stages, the role of
-each file, and the exact input/output formats.
+A guided interactive launcher (`run_interactive.py`) walks researchers through
+every step without requiring programming knowledge. The underlying command-line
+scripts remain available for automation and scripting.
+
+📖 **Full documentation:** https://petsurfer-pipeline.readthedocs.io
 
 ---
 
