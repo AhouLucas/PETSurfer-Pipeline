@@ -42,5 +42,3 @@ that researchers can run everything without writing any code.
 A **PDF version** of this documentation is available via the **"Download PDF"**
 link in the top navigation bar. It contains the full user guide and developer
 reference in a single printable document.
-
-Direct link: [petsurfer-pipeline.pdf](pdf/petsurfer-pipeline.pdf)
