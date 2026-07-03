@@ -65,7 +65,7 @@ plugins:
   # The PDF export is only enabled when ENABLE_PDF_EXPORT=1 so that local
   # `mkdocs serve` stays fast. Read the Docs sets this variable (see
   # .readthedocs.yaml) to produce the downloadable PDF.
-  - with-pdf:
+  - to-pdf:
       author: Lucas Ahou
       cover_title: PETSurfer Pipeline
       cover_subtitle: User guide and developer reference
