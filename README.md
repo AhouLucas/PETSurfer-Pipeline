@@ -31,6 +31,7 @@ scripts remain available for automation and scripting.
 4. [Usage](#usage)
 5. [Input & output formats](#input--output-formats)
 6. [Notes & references](#notes--references)
+7. [Building the documentation locally](#building-the-documentation-locally)
 
 ---
 
@@ -413,4 +414,47 @@ regressor entirely is not equivalent.
 - [`mri_coreg`](https://surfer.nmr.mgh.harvard.edu/fswiki/mri_coreg)
 - [FSGD format](https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat)
 - [DODS vs DOSS](https://surfer.nmr.mgh.harvard.edu/fswiki/DodsDoss)
+
+---
+
+## Building the documentation locally
+
+The docs are built with [MkDocs](https://www.mkdocs.org/) (Material theme) and
+live in the `docs/` folder. They are separate from the pipeline's Python
+environment, so set up a dedicated virtual environment:
+
+```bash
+python -m venv .docs-venv
+source .docs-venv/bin/activate
+pip install -r docs/requirements.txt
+```
+
+### Live preview
+
+```bash
+mkdocs serve
+```
+
+Opens a live-reloading preview at http://127.0.0.1:8000. The PDF is **not**
+generated during serve (it would slow down every reload); only the HTML site is
+built.
+
+### Build the HTML site
+
+```bash
+mkdocs build
+```
+
+Output goes to `site/` (git-ignored).
+
+### Build with PDF export
+
+```bash
+ENABLE_PDF_EXPORT=1 mkdocs build
+```
+
+Produces `site/pdf/petsurfer-pipeline.pdf` in addition to the HTML site.
+Requires [WeasyPrint](https://doc.courtbouillon.org/weasyprint/) system
+dependencies (installed automatically with `docs/requirements.txt` on most
+systems).
 </content>
