@@ -49,7 +49,7 @@ def ask_path(prompt_text: str, must_exist: bool = True, is_file: bool = True,
             else:
                 console.print("[red]Please enter a path.[/red]")
                 continue
-        value = str(Path(value).resolve())
+        value = str(Path(os.path.expanduser(value)).resolve())
         if must_exist:
             check = os.path.isfile(value) if is_file else os.path.isdir(value)
             if not check:
@@ -85,6 +85,45 @@ def ask_choice(prompt_text: str, choices: list[str], default: str | None = None)
         if value in choices:
             return value
         console.print(f"[red]Please enter one of: {', '.join(choices)}[/red]")
+
+
+def ask_int(prompt_text: str, default: int, minimum: int = 0) -> int:
+    """Ask for a non-negative integer with a default; re-prompt on invalid input."""
+    default_hint = f" (default: {default})"
+    while True:
+        value = pt_prompt(f"{prompt_text}{default_hint}: ").strip()
+        if not value:
+            return default
+        try:
+            n = int(value)
+        except ValueError:
+            console.print("[red]Please enter a whole number.[/red]")
+            continue
+        if n < minimum:
+            console.print(f"[red]Please enter a number >= {minimum}.[/red]")
+            continue
+        return n
+
+
+def ask_threshold(prompt_text: str, default: str) -> str:
+    """Ask for a MIN,MAX overlay threshold; re-prompt until both parts are numeric."""
+    default_hint = f" (default: {default})"
+    while True:
+        value = pt_prompt(f"{prompt_text}{default_hint}: ").strip()
+        if not value:
+            return default
+        parts = value.split(',')
+        if len(parts) == 2 and all(_is_float(p.strip()) for p in parts):
+            return value
+        console.print("[red]Please enter two numbers as MIN,MAX (e.g. 2,5).[/red]")
+
+
+def _is_float(token: str) -> bool:
+    try:
+        float(token)
+        return True
+    except ValueError:
+        return False
 
 
 def ask_text(prompt_text: str, default: str = "") -> str:
@@ -179,6 +218,14 @@ def preprocessing_flow() -> None:
     except ValueError as e:
         console.print(Panel(f"[red]{e}[/red]", title="[bold red]Error[/bold red]", box=box.ROUNDED))
         return
+    except Exception as e:
+        detail = capture.last_error or str(e) or "Could not read the patient list."
+        console.print(Panel(
+            f"[red]{detail}[/red]\n\nCheck that the spreadsheet is valid. Log file: {log_file}",
+            title="[bold red]Error[/bold red]", box=box.ROUNDED,
+        ))
+        logger.debug('Error building config:', exc_info=True)
+        return
 
     try:
         for patient_id, timestamp in config.patients:
@@ -249,7 +296,7 @@ def analysis_flow() -> None:
         must_exist=True, is_file=False,
         default=DEFAULT_SUBJECTS_DIR,
     )
-    fwhm_str = ask_text("Surface smoothing kernel size (mm)", default="5")
+    fwhm = ask_int("Surface smoothing kernel size (mm)", default=5, minimum=0)
 
     # Advanced settings
     design = 'dods'
@@ -281,7 +328,7 @@ def analysis_flow() -> None:
     summary = (
         f"[bold]Analysis folder:[/bold]     {analysis_dir}\n"
         f"[bold]Subjects directory:[/bold]  {subjects_dir}\n"
-        f"[bold]Smoothing FWHM:[/bold]      {fwhm_str} mm\n"
+        f"[bold]Smoothing FWHM:[/bold]      {fwhm} mm\n"
         f"[bold]Design:[/bold]              {design.upper()}\n"
         f"[bold]Mean-center:[/bold]         {'Yes' if mean_center else 'No'}"
         + (f"\n[bold]Default variable:[/bold]  {default_var}" if default_var else "")
@@ -299,7 +346,7 @@ def analysis_flow() -> None:
         excel_path=None,
         contrast_matrix_path=None,
         subjects_dir=subjects_dir,
-        fwhm=int(fwhm_str),
+        fwhm=fwhm,
         subjects_template=DEFAULT_SUBJECTS_TEMPLATE,
         fsgd_path=None,
         title=None,
@@ -383,7 +430,7 @@ def visualize_flow() -> None:
     )
     hemi: str | None = None if hemi_choice == 'both' else hemi_choice
 
-    overlay_threshold = ask_text(
+    overlay_threshold = ask_threshold(
         "Overlay threshold MIN,MAX  (values below MIN are hidden; above MAX are fully colored)",
         default='2,5',
     )
@@ -404,7 +451,11 @@ def visualize_flow() -> None:
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
+    import visualize_glmfit
     from visualize_glmfit import build_f_args, find_contrast_dirs, find_glmfit_dir
+
+    capture = _ErrorCapture()
+    visualize_glmfit.logger.addHandler(capture)
 
     hemis = ['lh', 'rh'] if hemi is None else [hemi]
     f_args: list[str] = []
@@ -416,7 +467,8 @@ def visualize_flow() -> None:
             surf_path = os.path.join(subjects_dir, 'fsaverage', 'surf', f'{h}.inflated')
             f_args += build_f_args(surf_path, contrast_dirs, overlay_threshold, h)
     except SystemExit:
-        # find_glmfit_dir / find_contrast_dirs call sys.exit on error; message already printed
+        # find_glmfit_dir / find_contrast_dirs call sys.exit on error
+        _error(capture.last_error or "Could not load the results to visualize.")
         return
 
     cmd = ['freeview'] + f_args + ['-viewport', '3d']
@@ -466,6 +518,6 @@ def main() -> None:
 if __name__ == '__main__':
     try:
         main()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         console.print("\n\n[yellow]Interrupted. Goodbye![/yellow]")
         sys.exit(0)
