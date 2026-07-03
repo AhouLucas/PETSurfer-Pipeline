@@ -23,6 +23,7 @@ packaging==26.2
 pandas==3.0.3
 pillow==12.2.0
 pluggy==1.6.0
+prompt_toolkit==3.0.52
 Pygments==2.20.0
 pyparsing==3.3.2
 pytest==9.1.1
@@ -34,3 +35,4 @@ six==1.17.0
 threadpoolctl==3.6.0
 typing_extensions==4.15.0
 urllib3==2.7.0
+wcwidth==0.8.2
