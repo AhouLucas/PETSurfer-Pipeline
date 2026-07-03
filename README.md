@@ -31,7 +31,8 @@ scripts remain available for automation and scripting.
 4. [Usage](#usage)
 5. [Input & output formats](#input--output-formats)
 6. [Notes & references](#notes--references)
-7. [Building the documentation locally](#building-the-documentation-locally)
+7. [Contributing](#contributing)
+8. [Building the documentation locally](#building-the-documentation-locally)
 
 ---
 
@@ -414,6 +415,18 @@ regressor entirely is not equivalent.
 - [`mri_coreg`](https://surfer.nmr.mgh.harvard.edu/fswiki/mri_coreg)
 - [FSGD format](https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat)
 - [DODS vs DOSS](https://surfer.nmr.mgh.harvard.edu/fswiki/DodsDoss)
+
+---
+
+## Contributing
+
+When modifying the pipeline, keep the documentation in sync:
+
+- Update the relevant page under `docs/` alongside any code change (CLI flags,
+  new steps, changed behaviour, etc.).
+- Run `mkdocs serve` locally to check that the page renders correctly before pushing.
+- If you add or change a TUI screen, update the screenshot list in
+  `docs/assets/screenshots/README.md` with the new expected filename and caption.
 
 ---
 
