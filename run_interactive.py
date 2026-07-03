@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 import subprocess
 import sys
@@ -93,6 +94,16 @@ def ask_text(prompt_text: str, default: str = "") -> str:
     return value or default
 
 
+class _ErrorCapture(logging.Handler):
+    """Attaches to a logger to capture the most recent ERROR-level message."""
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self.last_error: str | None = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.last_error = record.getMessage()
+
+
 # ---------------------------------------------------------------------------
 # Preprocessing flow
 # ---------------------------------------------------------------------------
@@ -140,6 +151,8 @@ def preprocessing_flow() -> None:
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     log_file = os.path.join(os.path.dirname(os.path.abspath(excel_path)), f'pipeline_{ts}.log')
     logger = setup_logger('petsurfer', log_file, file_mode='w')
+    capture = _ErrorCapture()
+    logger.addHandler(capture)
 
     parser = argparse.ArgumentParser()
     add_common_args(parser)
@@ -167,8 +180,9 @@ def preprocessing_flow() -> None:
                     patient_id, timestamp,
                 )
     except Exception as e:
+        detail = capture.last_error or str(e) or "An unexpected error occurred."
         console.print(Panel(
-            f"[red]{e}[/red]\n\nSee the log file for details: {log_file}",
+            f"[red]{detail}[/red]\n\nSee the log file for details: {log_file}",
             title="[bold red]Unexpected error[/bold red]", box=box.ROUNDED,
         ))
         logger.debug('Unexpected error:', exc_info=True)
@@ -272,13 +286,16 @@ def analysis_flow() -> None:
     )
 
     logger, log_path = setup_analysis_logger(analysis_dir)
+    capture = _ErrorCapture()
+    logger.addHandler(capture)
 
     try:
         run_analysis(args, logger)
     except SystemExit as e:
         if e.code != 0:
+            detail = capture.last_error or "Analysis failed."
             console.print(Panel(
-                f"[red]Analysis failed.[/red]\n\nSee the log file for details: {log_path}",
+                f"[red]{detail}[/red]\n\nSee the log file for details: {log_path}",
                 title="[bold red]Error[/bold red]", box=box.ROUNDED,
             ))
         return
@@ -289,8 +306,9 @@ def analysis_flow() -> None:
         ))
         return
     except Exception:
+        detail = capture.last_error or "An unexpected error occurred."
         console.print(Panel(
-            f"[red]An unexpected error occurred.[/red]\n\nSee the log file for details: {log_path}",
+            f"[red]{detail}[/red]\n\nSee the log file for details: {log_path}",
             title="[bold red]Error[/bold red]", box=box.ROUNDED,
         ))
         logger.debug('Unexpected error:', exc_info=True)
