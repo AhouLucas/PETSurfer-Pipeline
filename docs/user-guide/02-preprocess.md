@@ -15,9 +15,6 @@ take a while, especially with many patients.
 
 From the main menu, press **`1`** and follow the prompts.
 
-!!! note "Screenshot needed"
-    *Figure: the "Preprocess patients" intro screen.*
-
 ![Preprocess intro](../assets/screenshots/02-intro.png)
 
 The tool asks for the following. Press ++enter++ to accept a default shown in
@@ -30,15 +27,10 @@ brackets.
 | **Raw PET data directory** | Where the original PET scans live. Again, accept the default unless told otherwise. |
 | **Force recompute?** | Answer `n` (no) normally. Answer `y` only to redo work that's already done. |
 
-!!! note "Screenshot needed"
-    *Figure: the sequence of preprocessing prompts in the terminal.*
 
 ![Preprocess prompts](../assets/screenshots/02-prompts.png)
 
 The tool then shows a summary panel. Check it, then confirm with `y` to start.
-
-!!! note "Screenshot needed"
-    *Figure: the "Ready to preprocess" summary panel.*
 
 ![Preprocess summary](../assets/screenshots/02-summary.png)
 
@@ -48,9 +40,6 @@ The tool then shows a summary panel. Check it, then confirm with `y` to start.
   **skipped automatically** — it is safe to re-run this step to fill in any
   patients that failed the first time.
 - When it finishes you'll see **"Preprocessing complete!"**.
-
-!!! note "Screenshot needed"
-    *Figure: the "Preprocessing complete!" message.*
 
 ![Preprocess complete](../assets/screenshots/02-complete.png)
 
