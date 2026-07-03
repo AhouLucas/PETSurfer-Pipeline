@@ -493,7 +493,8 @@ def main() -> None:
         "[bold]Welcome to the PETSurfer Pipeline[/bold]\n\n"
         "This tool guides you step by step through the tau PET analysis pipeline.\n"
         "Run the steps in order: [cyan]Preprocess[/cyan] → [cyan]Analyse[/cyan] → [cyan]Visualize[/cyan].\n\n"
-        "[dim]Press Ctrl+C at any time to quit.[/dim]",
+        "[dim]Press Ctrl+C to cancel the current step and return to this menu; "
+        "press it again at the menu to quit.[/dim]",
         title="PETSurfer",
         box=box.DOUBLE_EDGE,
         padding=(1, 4),
@@ -512,7 +513,15 @@ def main() -> None:
 
         fn = next(fn for k, _, fn in MENU if k == choice)
         console.print()
-        fn()
+        try:
+            fn()
+        except KeyboardInterrupt:
+            # Ctrl+C interrupts the current flow (and any running step) and
+            # returns to this menu. Ctrl+C at the menu prompt itself quits.
+            console.print(
+                "\n\n[yellow]Interrupted — returning to the main menu.[/yellow]\n"
+                "[dim]Press Ctrl+C again at the menu to quit.[/dim]"
+            )
 
 
 if __name__ == '__main__':
