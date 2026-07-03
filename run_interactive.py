@@ -10,6 +10,7 @@ import argparse
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from prompt_toolkit import prompt as pt_prompt
@@ -134,8 +135,9 @@ def preprocessing_flow() -> None:
     from steps.gtmpvc import run_gtmpvc_patient
     from steps.vol2surf import run_vol2surf_patient
 
-    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'pipeline_rerun.log')
-    logger = setup_logger('petsurfer', log_file, file_mode='a')
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(os.path.dirname(os.path.abspath(excel_path)), f'pipeline_{ts}.log')
+    logger = setup_logger('petsurfer', log_file, file_mode='w')
 
     parser = argparse.ArgumentParser()
     add_common_args(parser)

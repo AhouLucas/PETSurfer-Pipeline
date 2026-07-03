@@ -11,6 +11,7 @@ Run with --help for the full list of options.
 import argparse
 import sys
 import os
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -18,8 +19,6 @@ from utils.config import add_common_args, build_config
 from utils.utils import setup_logger
 from steps.gtmpvc import run_gtmpvc_patient
 from steps.vol2surf import run_vol2surf_patient
-
-LOG_FILE = 'src/pipeline_rerun.log'
 
 
 if __name__ == '__main__':
@@ -29,8 +28,13 @@ if __name__ == '__main__':
     add_common_args(parser)
     args = parser.parse_args()
 
-    logger = setup_logger('petsurfer', LOG_FILE, file_mode='a')
-    logger.info('Preprocessing started. Log file: %s', os.path.abspath(LOG_FILE))
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(
+        os.path.dirname(os.path.abspath(args.excel_path)),
+        f'pipeline_{timestamp}.log',
+    )
+    logger = setup_logger('petsurfer', log_file, file_mode='w')
+    logger.info('Preprocessing started. Log file: %s', log_file)
 
     try:
         config = build_config(args)
@@ -51,8 +55,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.debug('Unexpected error:', exc_info=True)
         logger.error(
-            'An unexpected error occurred. See the log file for details: %s',
-            os.path.abspath(LOG_FILE),
+            'An unexpected error occurred. See the log file for details: %s', log_file,
         )
         sys.exit(1)
 
