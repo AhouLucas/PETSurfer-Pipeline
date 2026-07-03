@@ -1,8 +1,5 @@
 # -----------------------------------------------------------------------------
 # MkDocs configuration for the PETSurfer Pipeline documentation site.
-#
-# NOTE: replace every "YOUR_USERNAME" below with your real GitHub username
-# before publishing (site_url, repo_url, repo_name, edit_uri).
 # -----------------------------------------------------------------------------
 
 site_name: PETSurfer Pipeline
@@ -12,8 +9,8 @@ site_description: >-
 site_author: Lucas Ahou
 site_url: https://petsurfer-pipeline.readthedocs.io/
 
-repo_url: https://github.com/YOUR_USERNAME/petsurfer-pipeline
-repo_name: YOUR_USERNAME/petsurfer-pipeline
+repo_url: https://github.com/AhouLucas/PETSurfer-Pipeline
+repo_name: AhouLucas/PETSurfer-Pipeline
 edit_uri: edit/main/docs/
 
 theme:
