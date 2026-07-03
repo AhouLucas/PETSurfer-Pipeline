@@ -7,16 +7,11 @@ build:
   tools:
     python: "3.12"
   jobs:
-    # Build the site ourselves so we can set ENABLE_PDF_EXPORT=1, which turns on
-    # the with-pdf plugin (see mkdocs.yml) and produces the downloadable PDF.
-    # RTD serves whatever we place in $READTHEDOCS_OUTPUT/html.
+    pre_build:
+      - pip install -r docs/requirements.txt
     build:
       html:
-        # Not --strict: the with-pdf plugin ties its own strictness to mkdocs'
-        # --strict and treats the (harmless) cross-page anchor flattening as
-        # fatal. We still get link/nav validation warnings in the build log.
+        # Not --strict: the with-pdf plugin ties its own fatal-error behavior to
+        # mkdocs' --strict flag and treats the harmless cross-page anchor
+        # flattening (needed to merge pages into one PDF) as fatal.
         - ENABLE_PDF_EXPORT=1 mkdocs build --site-dir "$READTHEDOCS_OUTPUT/html"
-
-python:
-  install:
-    - requirements: docs/requirements.txt
