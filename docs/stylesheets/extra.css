@@ -1,0 +1,13 @@
+/* Minor visual tweaks for the PETSurfer Pipeline docs. */
+
+/* Give screenshot placeholders a light frame so they stand out while empty. */
+.md-typeset img[src*="screenshots/"] {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+/* Slightly tighter grid cards on the landing page. */
+.md-typeset .grid.cards > ul > li {
+  border-radius: 8px;
+}

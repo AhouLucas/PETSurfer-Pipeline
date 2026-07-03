@@ -1,0 +1,22 @@
+# Read the Docs build configuration for the PETSurfer Pipeline docs.
+# https://docs.readthedocs.io/en/stable/config-file/v2.html
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.12"
+  jobs:
+    # Build the site ourselves so we can set ENABLE_PDF_EXPORT=1, which turns on
+    # the with-pdf plugin (see mkdocs.yml) and produces the downloadable PDF.
+    # RTD serves whatever we place in $READTHEDOCS_OUTPUT/html.
+    build:
+      html:
+        # Not --strict: the with-pdf plugin ties its own strictness to mkdocs'
+        # --strict and treats the (harmless) cross-page anchor flattening as
+        # fatal. We still get link/nav validation warnings in the build log.
+        - ENABLE_PDF_EXPORT=1 mkdocs build --site-dir "$READTHEDOCS_OUTPUT/html"
+
+python:
+  install:
+    - requirements: docs/requirements.txt

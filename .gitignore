@@ -6,3 +6,5 @@ __pycache__/
 CLAUDE.md
 analysis/
 *.log
+site/
+.docs-venv/

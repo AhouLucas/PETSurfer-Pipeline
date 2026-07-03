@@ -1,0 +1,6 @@
+# Documentation build dependencies (Read the Docs installs these).
+# These are separate from the project's requirements.txt — the docs build does
+# not need the neuroimaging packages.
+mkdocs-material>=9.5
+mkdocs-with-pdf>=0.9
+pymdown-extensions>=10.0

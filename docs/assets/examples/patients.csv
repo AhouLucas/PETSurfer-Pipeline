@@ -1,0 +1,6 @@
+Include,PatientID,Timestamp,Group,Sex,Age
+1,1001,T0,Normal,F,68
+1,1002,T0,Normal,M,71
+1,2001,T0,MCI,F,74
+1,3001,T0,AD,M,77
+0,3002,T0,AD,F,80

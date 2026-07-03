@@ -1,0 +1,116 @@
+# -----------------------------------------------------------------------------
+# MkDocs configuration for the PETSurfer Pipeline documentation site.
+#
+# NOTE: replace every "YOUR_USERNAME" below with your real GitHub username
+# before publishing (site_url, repo_url, repo_name, edit_uri).
+# -----------------------------------------------------------------------------
+
+site_name: PETSurfer Pipeline
+site_description: >-
+  Guided documentation for the automated PETSurfer tau-PET pipeline —
+  a user guide for researchers and reference docs for developers.
+site_author: Lucas Ahou
+site_url: https://petsurfer-pipeline.readthedocs.io/
+
+repo_url: https://github.com/YOUR_USERNAME/petsurfer-pipeline
+repo_name: YOUR_USERNAME/petsurfer-pipeline
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections   # render top-level nav groups as separated sections
+    - navigation.top        # "back to top" button
+    - navigation.indexes    # section index pages
+    - content.code.copy     # copy button on code blocks
+    - toc.follow
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+# The screenshots master list is a maintainer note, not a site page.
+exclude_docs: |
+  assets/screenshots/README.md
+
+# Surface broken internal links / nav problems as warnings in the build log.
+# (We can't use `mkdocs build --strict` because the with-pdf plugin ties its own
+# strictness to it — see .readthedocs.yaml.)
+validation:
+  nav:
+    omitted_files: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  # The PDF export is only enabled when ENABLE_PDF_EXPORT=1 so that local
+  # `mkdocs serve` stays fast. Read the Docs sets this variable (see
+  # .readthedocs.yaml) to produce the downloadable PDF.
+  - with-pdf:
+      author: Lucas Ahou
+      cover_title: PETSurfer Pipeline
+      cover_subtitle: User guide and developer reference
+      output_path: pdf/petsurfer-pipeline.pdf
+      enabled_if_env: ENABLE_PDF_EXPORT
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - User Guide:
+      - Start here: user-guide/index.md
+      - 1. Prepare your files: user-guide/01-prepare-files.md
+      - 2. Preprocess patients: user-guide/02-preprocess.md
+      - 3. Run the analysis: user-guide/03-analyse.md
+      - 4. Visualize results: user-guide/04-visualize.md
+      - 5. Full worked example: user-guide/05-tutorial.md
+      - 6. Troubleshooting: user-guide/06-troubleshooting.md
+  - For Developers:
+      - Overview: developers/index.md
+      - Architecture: developers/architecture.md
+      - Pipeline stages: developers/pipeline-stages.md
+      - CLI reference: developers/cli-reference.md
+      - File formats: developers/file-formats.md
+      - FSGD & GLM: developers/fsgd-and-glm.md
+      - Auxiliary scripts: developers/scripts.md
