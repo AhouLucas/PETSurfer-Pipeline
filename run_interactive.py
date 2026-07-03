@@ -259,7 +259,7 @@ def analysis_flow() -> None:
     console.print(
         "This step runs group-level analysis ([italic]concat → smooth → GLM[/italic]) "
         "on fully preprocessed data.\n"
-        "Your analysis folder should contain your patient list [bold](.xlsx)[/bold] "
+        "Your analysis folder should contain your patient list [bold](.xlsx/.ods)[/bold] "
         "and contrast matrices [bold](.mtx)[/bold].\n"
     )
 
