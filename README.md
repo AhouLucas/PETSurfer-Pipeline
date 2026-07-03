@@ -1,103 +1,410 @@
 # PETSurfer Pipeline
 
-This repository contains the code to run some pre-processing steps, run the analysis and visualize the results
-using [PETSurfer](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer).
+This repository provides an automated CLI/TUI pipeline built around
+[PETSurfer](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer)
+(FreeSurfer's PET processing suite). It runs the pre-processing steps, the
+group-level statistical analysis, and the visualization of the results for
+**tau PET neuroimaging research on Alzheimer's disease biomarkers** (Braak
+staging across diagnostic groups) at IoNS.
 
-In this document, you will find explanations about the structure of this project, the role of the different files/directories, how to use the commands, and what inputs and prerequisites you will need to use those.
+The target users are researchers who are not necessarily developers. A guided
+interactive launcher (`run_interactive.py`) walks them through every step; the
+underlying command-line scripts remain available for automation and scripting.
+
+This document is aimed at people interested in the **code** as well as its
+usage: it explains the goal of the project, the pipeline stages, the role of
+each file, and the exact input/output formats.
+
+---
+
+## Table of contents
+
+1. [The pipeline at a glance](#the-pipeline-at-a-glance)
+2. [Prerequisites](#prerequisites)
+3. [Project structure](#project-structure)
+4. [Usage](#usage)
+5. [Input & output formats](#input--output-formats)
+6. [Notes & references](#notes--references)
+
+---
+
+## The pipeline at a glance
+
+The pipeline **assumes that `recon-all` and coregistration (`mri_coreg`) have
+already been run** for each patient. It picks up from partial-volume correction
+onward. The data flow is:
+
+```
+  Excel patient list ─┐
+                      ▼
+  PET.nii + MRI  ──► [1] gtmpvc  ──►  [2] vol2surf  ──►  {lh,rh}.pet.fsaverage.sm00.nii.gz
+  (per patient)        (PVC)         (surface proj)              │
+                                                                 ▼
+  Excel ──► FSGD  ─────────────────────────────►  [3] concat ─► smooth ─► GLM  ──►  sig.mgh
+  + .mtx contrasts                                    (group-level analysis)           │
+                                                                                       ▼
+                                                                                [4] freeview
+```
+
+1. **Partial Volume Correction (PVC)** — `mri_gtmpvc` corrects PET signal for
+   partial-volume effects and rescales/calibrates the signal against the
+   cerebellum. Implemented in `src/steps/gtmpvc.py`.
+   ([reference](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer#ROI_Analysis.2C_Setting_Up_Reference_Regions_for_KM.2C_and_Apply_Partial_Volume_Correction_.28if_using.29))
+
+2. **Surface projection** — `mri_vol2surf` projects the corrected PET volume
+   onto the `fsaverage` cortical surface, per hemisphere. Implemented in
+   `src/steps/vol2surf.py`.
+   ([reference](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer#Surface-based_analysis))
+
+3. **Group-level analysis** — `src/run_analysis.py` concatenates all subjects'
+   surface maps (`mri_concat`), smooths them (`mris_fwhm`), and fits a GLM
+   (`mri_glmfit`) using an FSGD design and one or more contrast matrices. The
+   FSGD can be provided or **auto-generated from the Excel file** by
+   `src/utils/excel_to_fsgd.py`.
+   (references: [PETSurfer Wiki](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer#Surface-based_analysis), [GLM Tutorial](https://www.nmr.mgh.harvard.edu/~jbm/jip/jip-glm/glm-tutorial.html))
+
+4. **Visualization** — `src/visualize_glmfit.py` opens the resulting
+   significance maps (`sig.mgh`) in `freeview` on the inflated `fsaverage`
+   surface.
+
+Steps 1–2 are the **preprocessing** stage (run per patient). Step 3 is the
+**analysis** stage (run once over a whole group). Step 4 is optional
+**visualization**.
+
+---
 
 ## Prerequisites
 
+### External tools
 
-### Preparing Python's environment
-You will need Python3 installed on your system and an environment with the following packages:
+FreeSurfer / PETSurfer must be installed and sourced so the following commands
+are on your `PATH`:
+
+`mri_gtmpvc`, `mri_vol2surf`, `mri_concat`, `mris_fwhm`, `mri_glmfit`,
+`freeview`.
+
+You also need a valid `$SUBJECTS_DIR` and the **`fsaverage`** subject present in
+it (the surface steps project onto `fsaverage`).
+
+### Python environment
+
+Python 3 is required. The main third-party packages are:
 
 ```
 numpy
-openpyxl
 pandas
-nibabel
+openpyxl        # .xlsx / .xls reading and writing
+odfpy           # .ods reading
+nibabel         # NIfTI I/O (validation scripts)
+rich            # interactive launcher UI
+prompt_toolkit  # interactive launcher prompts (tab-completion)
 ```
 
-To create an environment, first make sure Python3 is installed, then run:
+Create and activate a virtual environment:
 
-`python -m venv .env`
+```bash
+python -m venv .env
+source .env/bin/activate
+```
 
-This creates an environment named `.env` in your current directory. Then, activate it:
+Then install the pinned versions (recommended):
 
-`source .env/bin/activate`
+```bash
+pip install -r requirements.txt
+```
 
-Now, you can install the aforementioned packages by running:
+> **Note:** `run_interactive.py` depends on `rich` and `prompt_toolkit`; both are
+> pinned in `requirements.txt`.
 
-`pip install numpy openpyxl pandas nibabel` 
+### Per-patient data
 
-or use the `requirements.txt` file to make sure you install the correct versions of those packages:
+`recon-all` and coregistration (`mri_coreg`) are assumed to be done before using
+this pipeline. For each patient, you need at least:
 
-`pip install -r requirements.txt`
+1. `DATA_DIR/SUBJECT/PET.nii` — the original PET scan (in the raw PET data
+   directory).
+2. `SUBJECTS_DIR/SUBJECT/mri/template.reg.tau.lta` — the registration file
+   produced during coregistration on `PET.nii` (in the FreeSurfer subject
+   directory).
+3. `SUBJECTS_DIR/SUBJECT/mri/gtmseg.mgz` — the GTM segmentation, produced with
+   `gtmseg --s SUBJECT`.
 
+`SUBJECT` directory names are built from the patient ID and timestamp via the
+`--subjects-template` (default `YASMINE_TAU_%d_%s`) and `--data-template`
+(default `TAU_%d_%s`) flags.
 
-### Preparing patients' data
+> **Registration files are geometry-specific.** An `.lta` is only valid for the
+> exact volume geometries it was computed from. `template.reg.tau.lta` (original
+> PET space) is used for PVC; the `aux/bbpet2anat.lta` produced *inside* the
+> gtmpvc output (bbpet space) is what the surface projection uses. They must
+> never be swapped.
 
-Recon-all ([`recon-all`](https://surfer.nmr.mgh.harvard.edu/fswiki/recon-all)) and coregistration ([`mri_coreg`](https://surfer.nmr.mgh.harvard.edu/fswiki/mri_coreg)) steps are assumed to be done before using the scripts in this project. For each patient, you need to have at least:
+---
 
-1. `DATA_DIR/SUBJECT/PET.nii` : Original PET scan for patient, which resides in the data directory
-
-2. `SUBJECTS_DIR/SUBJECT/mri/template.reg.tau.lta`: Registration file that was generated during the coregistration step on the `PET.nii` scan. This should reside in the PETSurfer's subject's directory
-
-3. `SUBJECTS_DIR/SUBJECT/mri/gtmseg.mgz`: Segmentation file. This should have been generated with the `gtmseg --s SUBJECT` command.
-
-
-Also, make sure the `fsaverage` patient exists in your PETSurfer's patients' directory.
-
-## Project's structure
-
-Here is a description of the different files and directories in this project and their role:
+## Project structure
 
 ```bash
 .
 ├── README.md            # This document
-├── requirements.txt     # Python requirements
+├── requirements.txt     # Pinned Python dependencies
 ├── run_interactive.py   # Guided interactive launcher for all pipeline steps
-├── scripts/             # Miscellaneous scripts
+├── scripts/             # Auxiliary one-off scripts (not part of the pipeline)
 │   ├── compare_nifti.py
 │   ├── flag_warned_patients.py
 │   ├── match_tests_to_pet.py
 │   └── scan_pet_dirs.py
-└── src/                 # Main python scripts
-    ├── run_analysis.py
-    ├── run_preprocessing.py
-    ├── visualize_glmfit.py
-    ├── steps/           # PETSurfer steps for preprocessing
+└── src/                 # Main pipeline code
+    ├── run_preprocessing.py   # Entry point: gtmpvc → vol2surf (per patient)
+    ├── run_analysis.py        # Entry point: concat → smooth → GLM (group)
+    ├── visualize_glmfit.py    # Entry point: open results in freeview
+    ├── steps/                 # Individual preprocessing steps
     │   ├── gtmpvc.py
     │   └── vol2surf.py
-    └── utils/           # Utils scripts
+    └── utils/                 # Shared helpers
         ├── config.py
         ├── excel_to_fsgd.py
         └── utils.py
 ```
 
-Besides the interactive launcher (`run_interactive.py`), which guides you through every step, you will be
-mainly interested in the scripts in the `src/` directory. Especially, you will be interested in:
+### Entry points
 
-### `src/run_preprocessing.py`
+- **`run_interactive.py`** — a guided TUI (built with `rich` and
+  `prompt_toolkit`) that wraps all three stages behind a menu (1 preprocess /
+  2 analyse / 3 visualize / q quit). It validates paths, prompts for the
+  required inputs, and calls the same functions the CLI scripts use. This is the
+  recommended entry point for non-developer users. `Ctrl+C` returns to the main
+  menu.
 
-This script runs the Partial Volume Correction (PVC - using `mri_gtmpvc` from PETSurfer) as well as the Volume-to-Surface projection (`mri_vol2surf`) steps on all patients in the list (more on that later...).
+- **`src/run_preprocessing.py`** — non-interactive entry point that runs the
+  preprocessing stage for every included patient: `gtmpvc` then (on success)
+  `vol2surf`. Writes a `pipeline_<timestamp>.log` next to the Excel file.
+  Already-present outputs are skipped unless `--force` is passed.
 
-This will create:
+- **`src/run_analysis.py`** — group-level analysis. Auto-discovers its inputs
+  from an analysis directory, resolves/generates the FSGD, validates the
+  contrast matrices against the design, then per hemisphere runs
+  `mri_concat --prune` → `mris_fwhm --smooth-only` → `mri_glmfit`. Writes an
+  `analysis_<timestamp>.log` into the analysis directory.
 
-1. A directory named `gtmpvc.no.tfe.cerebellum.cortex.output` in the subject's mri subdirectory, which is generated during the PVC step. This directory will contain the a rescaled version of the PET scan and calibrated with respect to the cerebellum (named `input.rescaled.nii.gz`). It also contains a subdirectory `aux/` with a registration file named `bbpet2anat.lta` which should be used for the Volume-to-Surface projection on the rescaled PET scan according to the [PETSurfer Wiki](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer#ROI_Analysis.2C_Setting_Up_Reference_Regions_for_KM.2C_and_Apply_Partial_Volume_Correction_.28if_using.29).
+- **`src/visualize_glmfit.py`** — locates the glmfit output directory,
+  finds the contrast `sig.mgh` maps, and launches `freeview` with them overlaid
+  on the `fsaverage` inflated surface. Writes a `visualize.log`.
 
-2. During the Volume-to-Surface step, a file named `{hemi}.pet.fsaverage.sm00.nii.gz` for each hemisphere (i.e. "lh" and "rh") will be generated. Those files will then be used for the surface-based analysis later.
+### Steps
 
-Don't worry if you launch this script and those folders/files were already present, it first checks for them and skips these steps if they are already present. A log file is also generated to get a history of the processing. You can check for patients for which the pipeline failed to troubleshoot or to know which one to ignore in your analysis.
+- **`src/steps/gtmpvc.py`** — `run_gtmpvc_patient()` runs `mri_gtmpvc` for one
+  patient. It requires `PET.nii`, `template.reg.tau.lta`, and `gtmseg.mgz`, and
+  produces the `gtmpvc.no.tfe.cerebellum.cortex.output/` directory containing the
+  rescaled PET volume (`input.rescaled.nii.gz`) and `aux/bbpet2anat.lta`. Runs
+  standalone via its own `__main__` block.
 
-### `src/run_analysis.py`
+- **`src/steps/vol2surf.py`** — `run_vol2surf_patient()` runs `mri_vol2surf` for
+  both hemispheres, projecting `input.rescaled.nii.gz` (using
+  `aux/bbpet2anat.lta`) onto `fsaverage`, producing
+  `{hemi}.pet.fsaverage.sm00.nii.gz`. Also runs standalone.
 
-This script performs the [surface-based analysis](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer#Surface-based_analysis) using a GLM fit (`mri_glmfit`). This should be run only after the aforementioned files/directories were generated.
+### Utilities
 
-See the following sections for more details on the usage.
+- **`src/utils/config.py`** — the shared configuration layer. Defines the
+  `PipelineConfig` dataclass (all user-supplied parameters + the resolved
+  patient list), the shared pipeline constants (output directory/file name
+  patterns, hemispheres, default paths), `add_common_args()` (registers the
+  common CLI flags in one place so every script's `--help` stays consistent), and
+  `build_config()` (reads the Excel file, validates directories, and populates
+  the patient list). Paths to each patient's subject/data directory are computed
+  on demand by `PipelineConfig.subject_path()` / `.data_path()`.
 
-### `src/visualize_glmfit.py`
+- **`src/utils/utils.py`** — low-level shared helpers: logger setup with
+  indented multi-line formatting (`setup_logger`), subprocess execution with
+  logging (`run_command`), and Excel/ODS reading with validation of the
+  positional column contract (`load_included_rows`, `read_patients_from_excel`).
 
-Once the analysis was run, this script allows you to visualize the results using `freeview`.
+- **`src/utils/excel_to_fsgd.py`** — converts an Excel spreadsheet into a
+  FreeSurfer Group Descriptor (`.fsgd`) file. It classifies variable columns as
+  discrete (→ FSGD classes) or continuous (→ FSGD variables), validates the
+  data, and emits the FSGD. It is both a **standalone CLI tool** and a module
+  imported by `run_analysis.py` for FSGD auto-generation.
 
-Again, more on the usage in the next sections.
+### Auxiliary scripts
+
+These live in `scripts/` and are **not part of the pipeline**; they are small
+one-off or validation utilities.
+
+| Script | Purpose |
+|--------|---------|
+| `compare_nifti.py` | Threshold-based comparison of two `.nii.gz` volumes (shape, affine, correlation, relative diff) — used to validate reproductions across machines/runs. |
+| `flag_warned_patients.py` | Reads a pipeline log and sets the include flag to 0 in the Excel file for any patient that produced a WARNING, so they can be excluded from analysis. |
+| `match_tests_to_pet.py` | Data-prep: matches each patient's cognitive/tau test results to the closest PET-scan date and emits a pipeline-format spreadsheet. Configured via module-level constants. |
+| `scan_pet_dirs.py` | Scans the raw PET directory tree for valid subjects (matching the naming pattern with a present `PET.nii`) and writes a spreadsheet of IDs/timestamps. |
+
+---
+
+## Usage
+
+All examples assume the virtual environment is activated and FreeSurfer is
+sourced.
+
+### Interactive launcher (recommended)
+
+```bash
+python run_interactive.py
+```
+
+Menu-driven; it prompts for every input and runs the appropriate stage.
+
+### Preprocessing (per patient)
+
+```bash
+python src/run_preprocessing.py --excel-path patients.xlsx \
+    [--subjects-dir DIR] [--data-dir DIR] \
+    [--projfrac 0.5] [--fwhm 5] \
+    [--subjects-template 'YASMINE_TAU_%d_%s'] [--data-template 'TAU_%d_%s'] \
+    [--force]
+```
+
+`--excel-path` is required. Outputs already present are skipped unless `--force`.
+Individual steps can also be run on their own, e.g.
+`python src/steps/gtmpvc.py --excel-path ...` (same flags).
+
+### Group analysis
+
+```bash
+python src/run_analysis.py ANALYSIS_DIR \
+    [--excel-path patients.xlsx] \
+    [--contrast-matrix-path c1.mtx c2.mtx] \
+    [--subjects-dir DIR] [--fwhm 5] \
+    [--fsgd-path existing.fsgd] [--title TITLE] \
+    [--default-var Age] [--mean-center] [--design dods|doss]
+```
+
+`ANALYSIS_DIR` is the only required argument. When the input flags are omitted,
+they are **auto-discovered** from that directory: exactly one spreadsheet
+(`.xlsx`/`.ods`), one or more `.mtx` contrast matrices, and at most one
+`.fsgd` (if absent, one is auto-generated into `analysis.fsgd`). All outputs are
+written into `ANALYSIS_DIR`.
+
+### Visualization
+
+```bash
+python src/visualize_glmfit.py ANALYSIS_DIR \
+    [--hemi lh|rh] [--contrast NAME] [--overlay-threshold 2,5] [--subjects-dir DIR]
+```
+
+Both hemispheres and all contrasts are loaded by default (as stacked overlay
+layers in freeview).
+
+### Standalone FSGD generation
+
+```bash
+python src/utils/excel_to_fsgd.py input.xlsx -o design.fsgd \
+    [--title TITLE] [--default-var VAR] [--mean-center] \
+    [--subjects-template 'YASMINE_TAU_%d_%s'] [--sheet SHEET] [-v]
+```
+
+### Logs
+
+Each stage writes a timestamped log: `pipeline_<timestamp>.log` (next to the
+Excel file) for preprocessing, `analysis_<timestamp>.log` (in the analysis
+directory) for analysis, and `visualize.log` for visualization. Check these to
+see which patients succeeded, were skipped, or failed.
+
+---
+
+## Input & output formats
+
+### Excel patient list
+
+Columns are read **by position, not by name**. Do not add or reorder columns
+before index 2.
+
+| Index | Content | Type | Notes |
+|-------|---------|------|-------|
+| 0 | Include flag | int (0 or 1) | 1 = process this patient, 0 = skip |
+| 1 | Patient ID | int | Used to build directory names |
+| 2 | Timestamp | string (`"T0"`, `"T1"`, …) | Used to build directory names |
+| 3+ | Class / variable columns | mixed | See below |
+
+For columns at index 3 and beyond, the type is **inferred from the data**:
+
+- A column whose values are **all numeric** → a **continuous variable**
+  (an FSGD `Variables` entry / GLM covariate).
+- A column with **any non-numeric value** → a **discrete factor**. Multiple
+  discrete factors are combined into compound FSGD **class** labels via a
+  Cartesian product (e.g. `AD-F`).
+
+`.xlsx` and `.ods` files are supported. A patient with repeat scans
+(same ID, different timestamps) appears once per scan row so each scan is
+processed independently.
+
+### FSGD (`.fsgd`)
+
+The FSGD is the GLM design. `excel_to_fsgd.py` / `run_analysis.py` emit a file
+containing:
+
+- `GroupDescriptorFile 1` header (and an optional `Title`)
+- one `Class` line per discrete group (in first-occurrence order)
+- a `Variables` line listing the continuous variables
+- one `Input <subject_id> <class> <var values…>` line per included subject
+- an optional `DefaultVariable`
+- optional mean-centering of continuous variables (`--mean-center`)
+
+Two designs are supported (passed to `mri_glmfit` and used to size the contrast
+matrices):
+
+- **DODS** — Different Offset, Different Slope: separate intercept + slope per
+  group. Number of regressors = `n_classes × (n_variables + 1)`.
+- **DOSS** — Different Offset, Same Slope: pooled slopes across groups. Number
+  of regressors = `n_classes + n_variables`.
+
+Auto-generated FSGDs end with a marker line (`# Generated by run_analysis.py`).
+On re-runs, `run_analysis.py` detects that marker and regenerates the file so it
+stays in sync with the Excel input; a user-provided FSGD (without the marker) is
+used as-is.
+
+See the [FSGD format reference](https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat).
+
+### Contrast matrix (`.mtx`)
+
+Plain-text file with one contrast per row. Every value must be numeric, and each
+row must have **exactly `n_regressors` columns**, matching the FSGD design (see
+formulas above). `run_analysis.py` validates every `.mtx` against the FSGD
+before running any analysis and reports all problems at once.
+
+The contrast is applied during inference only (not during $\hat{\beta}$ estimation).
+Zeroing a column controls for a variable without testing it; dropping a
+regressor entirely is not equivalent.
+
+### Produced outputs
+
+| Path (relative to subject or analysis dir) | Produced by | Contents |
+|--------------------------------------------|-------------|----------|
+| `mri/gtmpvc.no.tfe.cerebellum.cortex.output/input.rescaled.nii.gz` | gtmpvc | Rescaled, cerebellum-calibrated PET volume (bbpet space) |
+| `mri/gtmpvc.no.tfe.cerebellum.cortex.output/aux/bbpet2anat.lta` | gtmpvc | Registration for the rescaled volume (used by vol2surf) |
+| `mri/{lh,rh}.pet.fsaverage.sm00.nii.gz` | vol2surf | PET projected onto `fsaverage`, per hemisphere |
+| `all.{hemi}.pet.fsaverage.sm00.nii.gz` | analysis (concat) | All subjects concatenated, per hemisphere |
+| `all.{hemi}.pet.fsaverage.sm{fwhm}.nii.gz` | analysis (smooth) | Smoothed concatenated map |
+| `all.{hemi}.pet.fsaverage.sm{fwhm}.glmfit/` | analysis (GLM) | GLM output; one subfolder per contrast, each with `sig.mgh` |
+| `analysis.fsgd` | analysis | Auto-generated FSGD (if none provided) |
+
+---
+
+## Notes & references
+
+- **Reproducibility / validation.** Floating-point non-determinism across
+  machines and runs is expected in FreeSurfer tools. Validation should be
+  threshold-based (e.g. correlation > 0.99, max relative difference < ~5%), not
+  bitwise. `scripts/compare_nifti.py` implements this kind of comparison.
+
+- **Skips are safe.** The preprocessing steps check for their outputs and skip
+  work that is already done, so re-running the pipeline only fills in what's
+  missing (use `--force` to recompute).
+
+### Reference links
+
+- [PETSurfer wiki](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer)
+- [FreeSurfer wiki](https://surfer.nmr.mgh.harvard.edu/fswiki/FreeSurferWiki)
+- [`recon-all`](https://surfer.nmr.mgh.harvard.edu/fswiki/recon-all)
+- [`mri_coreg`](https://surfer.nmr.mgh.harvard.edu/fswiki/mri_coreg)
+- [FSGD format](https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat)
+- [DODS vs DOSS](https://surfer.nmr.mgh.harvard.edu/fswiki/DodsDoss)
+</content>
