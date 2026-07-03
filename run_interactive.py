@@ -197,7 +197,9 @@ def analysis_flow() -> None:
     )
 
     # Auto-discovery preview
-    xlsx = sorted(Path(analysis_dir).glob('*.xlsx')) + sorted(Path(analysis_dir).glob('*.xls'))
+    xlsx = (sorted(Path(analysis_dir).glob('*.xlsx'))
+            + sorted(Path(analysis_dir).glob('*.xls'))
+            + sorted(Path(analysis_dir).glob('*.ods')))
     mtx = sorted(Path(analysis_dir).glob('*.mtx'))
     if xlsx:
         console.print(f"  [dim]Found spreadsheet:  {xlsx[0].name}[/dim]")
