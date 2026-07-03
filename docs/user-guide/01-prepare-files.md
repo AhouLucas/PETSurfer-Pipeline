@@ -9,19 +9,10 @@ You need two things open: a **terminal** (where you type a couple of commands) a
 the **file explorer** (where you organise your files).
 
 - **Terminal** — press ++ctrl+alt+t++ (or open *Activities*, type `Terminal`,
-  press ++enter++).
+  press ++enter++. You can also click on the terminal icon in the taskbar).
 - **Files** — click the *Files* icon in the dock (or open *Activities*, type
-  `Files`, press ++enter++).
+  `Files`, press ++enter++. You can also click on the files icons in the taskbar).
 
-!!! note "Screenshot needed"
-    *Figure: the GNOME Terminal window, freshly opened.*
-
-![Opening the terminal](../assets/screenshots/01-terminal.png)
-
-!!! note "Screenshot needed"
-    *Figure: the Files (Nautilus) window.*
-
-![The Files file explorer](../assets/screenshots/01-files.png)
 
 !!! tip "Two things to know about the terminal"
     - **Copy/paste** uses ++ctrl+shift+c++ and ++ctrl+shift+v++ (the extra
@@ -34,22 +25,19 @@ the **file explorer** (where you organise your files).
 In the terminal, type these three commands, pressing ++enter++ after each:
 
 ```bash
-cd ~/Documents/petsurfer-pipeline
-source .venv/bin/activate
+cd ~/Desktop/PETSurfer-Pipeline
+source .env/bin/activate
 python run_interactive.py
 ```
 
 - The first line moves into the project folder. **Your path may be different** —
   ask your administrator where the project lives if the first command reports
   *"No such file or directory"*.
-- The second line switches on the tool's environment. You'll see `(.venv)`
+- The second line switches on the tool's environment. You'll see `(.env)`
   appear at the start of the prompt.
 - The third line starts the guided tool.
 
 You should now see the welcome screen and main menu:
-
-!!! note "Screenshot needed"
-    *Figure: the PETSurfer welcome panel and the main menu (1 / 2 / 3 / q).*
 
 ![The main menu](../assets/screenshots/01-main-menu.png)
 
@@ -72,20 +60,15 @@ The **analysis folder** is one folder that holds everything for a single analysi
 your patient list, your contrast matrices, and — once you run the analysis — all
 the results.
 
-Create it in *Files* with right-click → **New Folder**, and give it a clear name
-such as `braak_ad_vs_normal`.
-
-!!! note "Screenshot needed"
-    *Figure: creating a new folder in Files via right-click → New Folder.*
-
-![Creating the analysis folder](../assets/screenshots/01-new-folder.png)
+Create it in *Files* with right-click → **New Folder**, and give it a clear name (e.g.  `braak_ad_vs_normal`, `age-mmse`, ...).
 
 !!! tip "Prefer the terminal?"
     You can also create it with one command:
 
     ```bash
-    mkdir ~/Documents/braak_ad_vs_normal
+    mkdir ~/Desktop/PETSurfer-Pipeline/braak_ad_vs_normal
     ```
+    `mkdir` stands for *"make directory"*
 
 ## The Excel patient list
 
@@ -106,9 +89,6 @@ For the 4th column onward, the tool figures out the type automatically:
   **group**;
 - a column of **numbers only** (e.g. age) becomes a **continuous variable** used
   as a covariate.
-
-!!! note "Screenshot needed"
-    *Figure: a correctly formatted patient list open in a spreadsheet program.*
 
 ![Example patient list](../assets/screenshots/01-excel.png)
 
@@ -137,9 +117,6 @@ You can create a `.mtx` file in any plain-text editor (e.g. *Text Editor* /
 `gedit`). Save it into the analysis folder with a descriptive name such as
 `ad_vs_normal.mtx`.
 
-!!! note "Screenshot needed"
-    *Figure: a contrast matrix open in a plain-text editor.*
-
 ![Example contrast matrix](../assets/screenshots/01-mtx.png)
 
 !!! info "What about the FSGD file?"
@@ -158,9 +135,6 @@ braak_ad_vs_normal/
 ├── ad_vs_normal.mtx     ← one or more contrast matrices
 └── ...                  ← results will be written here later
 ```
-
-!!! note "Screenshot needed"
-    *Figure: the analysis folder in Files, containing the spreadsheet and a .mtx.*
 
 ![The prepared analysis folder](../assets/screenshots/01-folder-layout.png)
 

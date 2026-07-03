@@ -22,22 +22,12 @@ its own page in this guide.
 
 ## What has already been set up for you
 
-An administrator has already installed and configured everything technical on
+Someone should have already installed and configured everything technical on
 the shared computer:
 
 - FreeSurfer / PETSurfer software,
 - the Python environment for this tool,
 - the earlier processing steps for each patient (`recon-all` and coregistration).
-
-!!! tip "Quick check that the machine is ready"
-    Open a terminal (the next page shows how) and type:
-
-    ```bash
-    echo $FREESURFER_HOME
-    ```
-
-    If it prints a folder path, FreeSurfer is set up. If it prints an empty line,
-    **contact your administrator** before continuing.
 
 ## What you provide
 
