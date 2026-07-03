@@ -3,7 +3,7 @@
 This site documents an automated pipeline built around
 [PETSurfer](https://surfer.nmr.mgh.harvard.edu/fswiki/PetSurfer) (FreeSurfer's
 PET processing suite) for **tau PET neuroimaging research on Alzheimer's disease
-biomarkers** (Braak staging across diagnostic groups) at IoNS.
+biomarkers** at IoNS.
 
 The pipeline runs three stages — **preprocessing**, **group-level statistical
 analysis**, and **visualization** — and provides a guided, menu-driven tool so
