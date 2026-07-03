@@ -101,8 +101,7 @@ nav:
       - 2. Preprocess patients: user-guide/02-preprocess.md
       - 3. Run the analysis: user-guide/03-analyse.md
       - 4. Visualize results: user-guide/04-visualize.md
-      - 5. Full worked example: user-guide/05-tutorial.md
-      - 6. Troubleshooting: user-guide/06-troubleshooting.md
+      - 5. Troubleshooting: user-guide/05-troubleshooting.md
   - For Developers:
       - Overview: developers/index.md
       - Architecture: developers/architecture.md
