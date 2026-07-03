@@ -61,8 +61,9 @@ def ask_path(prompt_text: str, must_exist: bool = True, is_file: bool = True,
 def ask_confirm(prompt_text: str, default: bool = True) -> bool:
     """Ask a yes/no question; returns True for yes, False for no."""
     hint = "[Y/n]" if default else "[y/N]"
+    default_hint = f" (default: {'y' if default else 'n'})"
     while True:
-        value = pt_prompt(f"{prompt_text} {hint}: ").strip().lower()
+        value = pt_prompt(f"{prompt_text}{default_hint} {hint}: ").strip().lower()
         if not value:
             return default
         if value in ('y', 'yes'):
@@ -75,8 +76,9 @@ def ask_confirm(prompt_text: str, default: bool = True) -> bool:
 def ask_choice(prompt_text: str, choices: list[str], default: str | None = None) -> str:
     """Ask the user to pick one of several choices."""
     hint = f"[{'/'.join(choices)}]"
+    default_hint = f" (default: {default})" if default is not None else ""
     while True:
-        value = pt_prompt(f"{prompt_text} {hint}: ").strip().lower()
+        value = pt_prompt(f"{prompt_text}{default_hint} {hint}: ").strip().lower()
         if not value and default is not None:
             return default
         if value in choices:
