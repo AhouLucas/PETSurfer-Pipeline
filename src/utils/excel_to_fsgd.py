@@ -41,6 +41,7 @@ See https://surfer.nmr.mgh.harvard.edu/fswiki/FsgdFormat for the FSGD specificat
 
 import argparse
 import logging
+import math
 import os
 import sys
 from pathlib import Path
@@ -76,8 +77,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def is_numeric(value) -> bool:
-    """Return True if *value* can be interpreted as a float."""
+    """Return True if *value* can be interpreted as a non-NaN float."""
     if value is None:
+        return False
+    if isinstance(value, float) and math.isnan(value):
         return False
     if isinstance(value, (int, float)):
         return True
@@ -207,13 +210,19 @@ def validate(
         dupes = [s for s in set(subject_ids) if subject_ids.count(s) > 1]
         errors.append(f"Duplicate generated SubjectIDs: {dupes}")
 
-    # --- No empty cells in discrete columns ---
+    # --- No empty/NaN cells in discrete columns ---
     missing_rows: set[int] = set()
     for col_idx in discrete_cols:
         col_name = headers[col_idx]
         for row_idx, row in enumerate(data_rows, start=2):
-            if row[col_idx] is None or str(row[col_idx]).strip() == "":
-                errors.append(f"Row {row_idx}, column '{col_name}': empty cell.")
+            v = row[col_idx]
+            is_missing = (
+                v is None
+                or (isinstance(v, float) and math.isnan(v))
+                or str(v).strip() == ""
+            )
+            if is_missing:
+                errors.append(f"Row {row_idx}, column '{col_name}': missing value.")
                 missing_rows.add(row_idx)
 
     # --- No empty cells in continuous columns ---
