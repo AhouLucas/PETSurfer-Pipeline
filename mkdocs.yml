@@ -95,7 +95,6 @@ extra_javascript:
 
 nav:
   - Home: index.md
-  - Download PDF: pdf/petsurfer-pipeline.pdf
   - User Guide:
       - Start here: user-guide/index.md
       - 1. Prepare your files: user-guide/01-prepare-files.md
